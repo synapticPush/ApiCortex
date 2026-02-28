@@ -1,4 +1,8 @@
-# ApiCortex: Autonomous API Failure Prediction & Contract Testing Platform
+# `ApiCortex` Autonomous API Failure Prediction & Contract Testing Platform
+
+<p align="center">
+  <img src="assets/logo/apicortex_icon_full.png" alt="ApiCortex Logo" width="400" />
+</p>
 
 ![License](https://img.shields.io/badge/license-AGPL_v3-blue.svg)
 
@@ -59,7 +63,31 @@ graph LR
 *Scenario:* An upstream service commits a schema change.  
 *Outcome:* ApiCortex predicts an upcoming API failure caused by this change and alerts the dependent teams **before** deployment, preventing a production incident.
 
-## 8. Contact
+## 8. Data Generation & Model Training
+
+Due to the sensitive nature of production telemetry and the lack of publicly available real-world API failure datasets, all training data used in this repository is **synthetic**. We designed a custom generator (`DataGen/data.py`) that simulates 90 days of minute-level API observability metrics, including latency percentiles, error rates, traffic, schema changes, and deploy events. The generator uses:
+
+- realistic daily/weekly traffic cycles with noise, spikes, crashes, and surges
+- schema activity patterns with normal changes and occasional breaking updates
+- latency and error models conditioned on load, deployments, and schema shifts
+- a calibrated risk probability model to seed binary downtime labels with controlled prevalence
+- edge-case datasets representing pure-normal and pure-downtime scenarios for validation
+
+Parameters are tuned to produce data distributions that closely mirror expected production behaviors, giving the model the best chance to generalize when real telemetry becomes available.
+
+The core predictive model is an XGBoost binary classifier trained on engineered features derived from past values (rolling means, variances, z‑scores, accelerations, etc.). Training follows a chronological 75/25 split with time‑series cross‑validation to avoid leakage. Threshold tuning prioritizes recall under a precision floor, reflecting the high cost of missed failures.
+
+Final evaluation metrics on test data typically achieve:
+
+- **F1‑score:** ~80-90 % (final for now: 82.44%)
+- **Precision:** ~75-85 % (final for now: 79.79%)
+- **Recall:** ~80-90 % (final for now: 85.28%)
+
+
+These synthetic experiments offer a proof‑of‑concept; the pipeline and model are ready to ingest real traffic as it becomes accessible.
+
+
+## 9. Contact
 - **Email:** mail@0xarchit.is-a.dev
 - **Contact Form:** https://0xarchit.is-a.dev/contact-us
 
