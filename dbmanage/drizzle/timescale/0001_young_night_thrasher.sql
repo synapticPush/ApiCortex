@@ -1,0 +1,1 @@
+CREATE INDEX "api_metrics_hourly_bucket_idx" ON "api_metrics_hourly" USING btree ("bucket" DESC NULLS LAST);
