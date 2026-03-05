@@ -3,7 +3,8 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.api import API, Endpoint
+from app.models.api import API
+from app.models.endpoint import Endpoint
 from app.schemas.api import APICreate, EndpointCreate
 
 

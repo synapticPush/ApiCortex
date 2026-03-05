@@ -1,5 +1,6 @@
-from app.models.api import API, Endpoint
+from app.models.api import API
 from app.models.contract import Contract
+from app.models.endpoint import Endpoint
 from app.models.feature_flag import FeatureFlag
 from app.models.job import Job
 from app.models.membership import Membership

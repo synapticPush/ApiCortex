@@ -8,6 +8,7 @@ from app.core.security import require_role
 from app.db.session import get_db
 from app.schemas.api import ContractCreate, ContractOut, OpenAPIUploadOut, OpenAPIUploadRequest, OpenAPISpecCreate, OpenAPISpecOut
 from app.services.contract_service import ContractService
+from app.services.job_service import JobService
 
 
 router = APIRouter()
@@ -64,7 +65,7 @@ def upload_openapi_flexible(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    ContractService.enqueue_job(
+    JobService.enqueue_job(
         db,
         org_id=org_id,
         job_type="openapi_contract_sync",
@@ -95,7 +96,7 @@ def upload_openapi(
         spec = ContractService.upload_openapi_spec(db, org_id=org_id, api_id=api_id, payload=payload)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    ContractService.enqueue_job(
+    JobService.enqueue_job(
         db,
         org_id=org_id,
         job_type="openapi_contract_sync",
@@ -128,7 +129,7 @@ def create_contract(
 @router.post("/jobs/claim")
 def claim_job(request: Request, db: Session = Depends(get_db), _: dict = Depends(require_role("admin"))):
     org_id = uuid.UUID(str(request.state.org_id))
-    job = ContractService.claim_next_job(db, org_id=org_id)
+    job = JobService.claim_next_job(db, org_id=org_id)
     if not job:
         return {"status": "empty"}
     return {
@@ -146,7 +147,7 @@ def complete_job(job_id: uuid.UUID, db: Session = Depends(get_db), _: dict = Dep
     job = db.get(Job, job_id)
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-    ContractService.mark_job_completed(db, job)
+    JobService.mark_job_completed(db, job)
     return {"status": "completed"}
 
 
@@ -157,5 +158,5 @@ def fail_job(job_id: uuid.UUID, db: Session = Depends(get_db), _: dict = Depends
     job = db.get(Job, job_id)
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-    updated = ContractService.mark_job_failed_with_backoff(db, job)
+    updated = JobService.mark_job_failed_with_backoff(db, job)
     return {"status": updated.status, "attempts": updated.attempts, "run_at": updated.run_at.isoformat()}
