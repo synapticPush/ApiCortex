@@ -120,9 +120,9 @@ This guarantees each accepted raw event can be transformed into time-windowed ag
 Required:
 
 - `KAFKA_SERVICE_URI` (comma-separated brokers)
-- `KAFKA_CA_CERT_PATH`
-- `KAFKA_SERVICE_CERT_PATH`
-- `KAFKA_SERVICE_KEY_PATH`
+- `KAFKA_CA_CERT`
+- `KAFKA_SERVICE_CERT`
+- `KAFKA_SERVICE_KEY`
 
 Optional:
 
@@ -156,10 +156,9 @@ Auth headers for `POST /v1/telemetry`:
 docker build -t apicortex-ingest-service .
 docker run --rm -p 8080:8080 \
   -e KAFKA_SERVICE_URI=broker:9093 \
-  -e KAFKA_CA_CERT_PATH=/certs/ca.pem \
-  -e KAFKA_SERVICE_CERT_PATH=/certs/service.cert \
-  -e KAFKA_SERVICE_KEY_PATH=/certs/service.key \
-  -v $(pwd)/certs:/certs \
+  -e KAFKA_CA_CERT="$(cat certs/ca.pem)" \
+  -e KAFKA_SERVICE_CERT="$(cat certs/service.cert)" \
+  -e KAFKA_SERVICE_KEY="$(cat certs/service.key)" \
   apicortex-ingest-service
 ```
 

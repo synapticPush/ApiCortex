@@ -33,7 +33,7 @@ func main() {
 
 	producer, err := kafka.NewProducer(
 		cfg.KafkaServiceURI,
-		cfg.KafkaCACertPath,
+		cfg.KafkaCACert,
 		cfg.KafkaServiceCert,
 		cfg.KafkaServiceKey,
 		log.Logger,

@@ -11,7 +11,7 @@ import (
 type Config struct {
 	Port               string
 	KafkaServiceURI    string
-	KafkaCACertPath    string
+	KafkaCACert        string
 	KafkaServiceCert   string
 	KafkaServiceKey    string
 	RequireAPIKey      bool
@@ -29,9 +29,9 @@ func Load() (Config, error) {
 	cfg := Config{
 		Port:               getEnv("PORT", "8080"),
 		KafkaServiceURI:    strings.TrimSpace(os.Getenv("KAFKA_SERVICE_URI")),
-		KafkaCACertPath:    strings.TrimSpace(os.Getenv("KAFKA_CA_CERT_PATH")),
-		KafkaServiceCert:   strings.TrimSpace(os.Getenv("KAFKA_SERVICE_CERT_PATH")),
-		KafkaServiceKey:    strings.TrimSpace(os.Getenv("KAFKA_SERVICE_KEY_PATH")),
+		KafkaCACert:        strings.TrimSpace(os.Getenv("KAFKA_CA_CERT")),
+		KafkaServiceCert:   strings.TrimSpace(os.Getenv("KAFKA_SERVICE_CERT")),
+		KafkaServiceKey:    strings.TrimSpace(os.Getenv("KAFKA_SERVICE_KEY")),
 		RequireAPIKey:      getEnvBool("REQUIRE_API_KEY", true),
 		IngestAPIKey:       strings.TrimSpace(os.Getenv("INGEST_API_KEY")),
 		RateLimitRPS:       getEnvInt("RATE_LIMIT_RPS", 4000),
@@ -46,14 +46,14 @@ func Load() (Config, error) {
 	if cfg.KafkaServiceURI == "" {
 		return Config{}, fmt.Errorf("KAFKA_SERVICE_URI is required")
 	}
-	if cfg.KafkaCACertPath == "" {
-		return Config{}, fmt.Errorf("KAFKA_CA_CERT_PATH is required")
+	if cfg.KafkaCACert == "" {
+		return Config{}, fmt.Errorf("KAFKA_CA_CERT is required")
 	}
 	if cfg.KafkaServiceCert == "" {
-		return Config{}, fmt.Errorf("KAFKA_SERVICE_CERT_PATH is required")
+		return Config{}, fmt.Errorf("KAFKA_SERVICE_CERT is required")
 	}
 	if cfg.KafkaServiceKey == "" {
-		return Config{}, fmt.Errorf("KAFKA_SERVICE_KEY_PATH is required")
+		return Config{}, fmt.Errorf("KAFKA_SERVICE_KEY is required")
 	}
 	if cfg.RequireAPIKey && cfg.IngestAPIKey == "" {
 		return Config{}, fmt.Errorf("INGEST_API_KEY is required when REQUIRE_API_KEY=true")

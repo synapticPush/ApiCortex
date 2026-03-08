@@ -1,10 +1,11 @@
 confluent-kafka>=2.4.0
-pandas>=2.2.0
 numpy>=1.26.0
-xgboost>=2.0.0
-shap>=0.45.0
+pandas>=2.2.0
 psycopg2-binary>=2.9.9
 pydantic>=2.7.0
-uvloop>=0.19.0; sys_platform != "win32"
 python-dotenv>=1.0.1
 joblib>=1.4.0
+python-snappy>=0.7.3
+shap>=0.45.0
+uvloop>=0.19.0; sys_platform != "win32"
+xgboost>=2.0.0

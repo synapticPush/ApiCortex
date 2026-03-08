@@ -9,7 +9,6 @@ Loaded from `../.env`:
 - `DATABASE` for core control-plane NeonDB
 - `TIMESCALE_DATABASE` for TimescaleDB
 - `TIMESCALE_CA_CERT_PATH` optional CA certificate path for Timescale TLS verification
-- `KAFKA_CA_CERT_PATH` used as fallback CA certificate path
 - `TIMESCALE_SSLMODE` optional SSL mode override (default: `verify-full`)
 - `TIMESCALE_USE_LIBPQ_COMPAT` optional (`true`/`false`), when `true` uses `uselibpqcompat=true&sslmode=require`
 

@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -27,13 +26,13 @@ type Producer struct {
 	metrics *metrics.Registry
 }
 
-func NewProducer(brokersCSV, caPath, certPath, keyPath string, logger zerolog.Logger, m *metrics.Registry) (*Producer, error) {
+func NewProducer(brokersCSV, caPEM, certPEM, keyPEM string, logger zerolog.Logger, m *metrics.Registry) (*Producer, error) {
 	brokers := splitAndTrim(brokersCSV)
 	if len(brokers) == 0 {
 		return nil, fmt.Errorf("no kafka brokers provided")
 	}
 
-	tlsConfig, err := loadTLSConfig(caPath, certPath, keyPath)
+	tlsConfig, err := loadTLSConfig(caPEM, certPEM, keyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("load TLS config: %w", err)
 	}
@@ -107,17 +106,13 @@ func encodeBatchGzip(events []model.TelemetryEvent) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func loadTLSConfig(caPath, certPath, keyPath string) (*tls.Config, error) {
-	caCert, err := os.ReadFile(caPath)
-	if err != nil {
-		return nil, err
-	}
+func loadTLSConfig(caPEM, certPEM, keyPEM string) (*tls.Config, error) {
 	caPool := x509.NewCertPool()
-	if !caPool.AppendCertsFromPEM(caCert) {
+	if !caPool.AppendCertsFromPEM([]byte(caPEM)) {
 		return nil, fmt.Errorf("failed to append CA cert")
 	}
 
-	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	cert, err := tls.X509KeyPair([]byte(certPEM), []byte(keyPEM))
 	if err != nil {
 		return nil, err
 	}

@@ -25,17 +25,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update && \
-    apt-get install --no-install-recommends -y libgomp1 && \
-    groupadd --system appuser && \
-    useradd --system --gid appuser --create-home --home-dir /home/appuser appuser && \
-    rm -rf /var/lib/apt/lists/*
+RUN groupadd --system appuser && \
+    useradd --system --gid appuser --create-home --home-dir /home/appuser appuser
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=appuser:appuser app ./app
-COPY --chown=appuser:appuser workers ./workers
-COPY --chown=appuser:appuser model ./model
 
 USER appuser
 
-CMD ["python", "-m", "app.main"]
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

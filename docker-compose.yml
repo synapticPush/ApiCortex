@@ -1,0 +1,127 @@
+name: apicortex
+
+x-runtime-defaults: &runtime-defaults
+  init: true
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  networks:
+    - apicortex
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-kafka-tls-env: &kafka-tls-env
+  KAFKA_SERVICE_URI: ${KAFKA_SERVICE_URI:-}
+  KAFKA_CA_CERT: ${KAFKA_CA_CERT:-}
+  KAFKA_SERVICE_CERT: ${KAFKA_SERVICE_CERT:-}
+  KAFKA_SERVICE_KEY: ${KAFKA_SERVICE_KEY:-}
+
+services:
+  control-plane:
+    <<: *runtime-defaults
+    build:
+      context: ./control-plane
+      dockerfile: Dockerfile
+    image: apicortex-control-plane:latest
+    stop_grace_period: 20s
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: ${APP_ENV:-prod}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DEBUG: ${DEBUG:-false}
+      DATABASE: ${DATABASE:-}
+      TIMESCALE_DATABASE: ${TIMESCALE_DATABASE:-}
+      AUTO_CREATE_TABLES: ${AUTO_CREATE_TABLES:-false}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH:-}
+      JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+      ACCESS_TOKEN_EXP_MINUTES: ${ACCESS_TOKEN_EXP_MINUTES:-15}
+      REFRESH_TOKEN_EXP_DAYS: ${REFRESH_TOKEN_EXP_DAYS:-7}
+      ACCESS_COOKIE_NAME: ${ACCESS_COOKIE_NAME:-acx_access}
+      REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME:-acx_refresh}
+      CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-acx_csrf}
+      CSRF_HEADER_NAME: ${CSRF_HEADER_NAME:-X-CSRF-Token}
+      SECURE_COOKIES: ${SECURE_COOKIES:-true}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-["*"]}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
+      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
+      OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:8000}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  ingest-service:
+    <<: *runtime-defaults
+    build:
+      context: ./ingest-service
+      dockerfile: Dockerfile
+    image: apicortex-ingest-service:latest
+    stop_grace_period: 20s
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *kafka-tls-env
+      PORT: ${PORT:-8080}
+      REQUIRE_API_KEY: ${REQUIRE_API_KEY:-false}
+      INGEST_API_KEY: ${INGEST_API_KEY:-}
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-4000}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-8000}
+      BATCH_SIZE: ${BATCH_SIZE:-500}
+      FLUSH_INTERVAL_SECONDS: ${FLUSH_INTERVAL_SECONDS:-2}
+      MAX_BUFFER_CAPACITY: ${MAX_BUFFER_CAPACITY:-50000}
+      MAX_EVENTS_PER_REQUEST: ${MAX_EVENTS_PER_REQUEST:-1000}
+      PUBLISH_WORKER_COUNT: ${PUBLISH_WORKER_COUNT:-4}
+
+  ml-service:
+    <<: *runtime-defaults
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    image: apicortex-ml-service:latest
+    stop_grace_period: 30s
+    environment:
+      <<: *kafka-tls-env
+      TIMESCALE_DATABASE: ${TIMESCALE_DATABASE:-}
+      MODEL_PATH: ${MODEL_PATH:-model/xgboost_failure_prediction.pkl}
+      ALERT_THRESHOLD: ${ALERT_THRESHOLD:-0.8}
+      ENABLE_SHAP: ${ENABLE_SHAP:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      KAFKA_TOPIC_RAW: ${KAFKA_TOPIC_RAW:-telemetry.raw}
+      KAFKA_TOPIC_ALERTS: ${KAFKA_TOPIC_ALERTS:-alerts}
+      KAFKA_GROUP_ID: ${KAFKA_GROUP_ID:-apicortex-ml-inference}
+      KAFKA_POLL_TIMEOUT_SECONDS: ${KAFKA_POLL_TIMEOUT_SECONDS:-1.0}
+      KAFKA_MAX_POLL_INTERVAL_MS: ${KAFKA_MAX_POLL_INTERVAL_MS:-300000}
+      KAFKA_SESSION_TIMEOUT_MS: ${KAFKA_SESSION_TIMEOUT_MS:-45000}
+      SHAP_TOP_K: ${SHAP_TOP_K:-5}
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.config import get_settings; s = get_settings(); assert s.model_path.exists(); assert 'security.protocol' in s.consumer_config; print('ok')"]
+      interval: 45s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  apicortex:
+    driver: bridge
