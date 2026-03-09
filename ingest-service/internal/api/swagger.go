@@ -65,6 +65,65 @@ const openAPISpec = `{
         ]
       }
     },
+    "/v1/endpoints/live": {
+      "get": {
+        "summary": "Live endpoint telemetry state",
+        "description": "Returns rolling live telemetry aggregates per org/api/endpoint/method.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {"type": "integer", "minimum": 1, "maximum": 1000}
+          },
+          {
+            "name": "org_id",
+            "in": "query",
+            "schema": {"type": "string", "format": "uuid"}
+          },
+          {
+            "name": "api_id",
+            "in": "query",
+            "schema": {"type": "string", "format": "uuid"}
+          },
+          {
+            "name": "method",
+            "in": "query",
+            "schema": {"type": "string"}
+          },
+          {
+            "name": "endpoint_contains",
+            "in": "query",
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current live endpoint telemetry state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveEndpointResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query params"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyHeader": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/health": {
       "get": {
         "summary": "Liveness probe",
@@ -143,6 +202,35 @@ const openAPISpec = `{
         "properties": {
           "accepted": {"type": "integer"},
           "status": {"type": "string"}
+        }
+      },
+      "LiveEndpointState": {
+        "type": "object",
+        "properties": {
+          "org_id": {"type": "string", "format": "uuid"},
+          "api_id": {"type": "string", "format": "uuid"},
+          "endpoint": {"type": "string"},
+          "method": {"type": "string"},
+          "requests": {"type": "integer"},
+          "successes": {"type": "integer"},
+          "errors": {"type": "integer"},
+          "error_rate": {"type": "number"},
+          "avg_latency_ms": {"type": "number"},
+          "last_latency_ms": {"type": "integer"},
+          "last_status": {"type": "integer"},
+          "last_seen_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "LiveEndpointResponse": {
+        "type": "object",
+        "properties": {
+          "count": {"type": "integer"},
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LiveEndpointState"
+            }
+          }
         }
       }
     }

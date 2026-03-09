@@ -18,6 +18,8 @@ import (
 	"ingest-service/internal/config"
 	"ingest-service/internal/kafka"
 	"ingest-service/internal/metrics"
+	"ingest-service/internal/poller"
+	"ingest-service/internal/tracker"
 )
 
 func main() {
@@ -30,6 +32,7 @@ func main() {
 	}
 
 	metricsRegistry := metrics.NewRegistry()
+	liveTracker := tracker.NewLiveTracker(cfg.LiveTrackRetention)
 
 	producer, err := kafka.NewProducer(
 		cfg.KafkaServiceURI,
@@ -63,11 +66,37 @@ func main() {
 	batcher.Start(ctx)
 	defer batcher.Stop()
 
-	h := api.NewHandler(batcher, metricsRegistry, log.Logger, cfg.MaxEventsPerReq)
+	h := api.NewHandler(batcher, metricsRegistry, liveTracker, log.Logger, cfg.MaxEventsPerReq)
 	rateLimiter := api.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst, 5*time.Minute)
+
+	var activePoller *poller.Poller
+	if cfg.ActivePolling && len(cfg.PollTargets) > 0 {
+		targets := make([]poller.Target, 0, len(cfg.PollTargets))
+		for i := range cfg.PollTargets {
+			t := cfg.PollTargets[i]
+			targets = append(targets, poller.Target{
+				Name:          t.Name,
+				OrgID:         t.OrgID,
+				APIID:         t.APIID,
+				BaseURL:       t.BaseURL,
+				Path:          t.Path,
+				Method:        t.Method,
+				Interval:      time.Duration(t.IntervalSeconds) * time.Second,
+				Timeout:       time.Duration(t.TimeoutMS) * time.Millisecond,
+				Headers:       t.Headers,
+				Body:          t.Body,
+				ClientRegion:  t.ClientRegion,
+				SchemaVersion: t.SchemaVersion,
+			})
+		}
+		activePoller = poller.New(targets, batcher, metricsRegistry, liveTracker, log.Logger)
+		activePoller.Start(ctx)
+		log.Info().Int("targets", len(targets)).Msg("active endpoint polling started")
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/telemetry", h.IngestTelemetry)
+	mux.HandleFunc("/v1/endpoints/live", h.ListLiveEndpoints)
 	mux.HandleFunc("/health", h.Health)
 	mux.HandleFunc("/ready", h.Ready)
 	mux.Handle("/metrics", metricsRegistry)
@@ -110,6 +139,9 @@ func main() {
 	defer shutdownCancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Error().Err(err).Msg("http server shutdown error")
+	}
+	if activePoller != nil {
+		activePoller.Wait()
 	}
 	log.Info().Msg("ingest-service stopped")
 }

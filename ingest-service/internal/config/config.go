@@ -1,11 +1,15 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -23,9 +27,29 @@ type Config struct {
 	MaxBufferCapacity  int
 	MaxEventsPerReq    int
 	PublishWorkerCount int
+	LiveTrackRetention time.Duration
+	ActivePolling      bool
+	PollTargets        []PollTargetConfig
+}
+
+type PollTargetConfig struct {
+	Name            string            `json:"name"`
+	OrgID           string            `json:"org_id"`
+	APIID           string            `json:"api_id"`
+	BaseURL         string            `json:"base_url"`
+	Path            string            `json:"path"`
+	Method          string            `json:"method"`
+	IntervalSeconds int               `json:"interval_seconds"`
+	TimeoutMS       int               `json:"timeout_ms"`
+	Headers         map[string]string `json:"headers"`
+	Body            string            `json:"body"`
+	ClientRegion    string            `json:"client_region"`
+	SchemaVersion   string            `json:"schema_version"`
 }
 
 func Load() (Config, error) {
+	loadDotEnv()
+
 	cfg := Config{
 		Port:               getEnv("PORT", "8080"),
 		KafkaServiceURI:    strings.TrimSpace(os.Getenv("KAFKA_SERVICE_URI")),
@@ -41,7 +65,15 @@ func Load() (Config, error) {
 		MaxBufferCapacity:  getEnvInt("MAX_BUFFER_CAPACITY", 50000),
 		MaxEventsPerReq:    getEnvInt("MAX_EVENTS_PER_REQUEST", 1000),
 		PublishWorkerCount: getEnvInt("PUBLISH_WORKER_COUNT", 4),
+		LiveTrackRetention: time.Duration(getEnvInt("LIVE_TRACK_RETENTION_MINUTES", 120)) * time.Minute,
+		ActivePolling:      getEnvBool("ACTIVE_POLLING_ENABLED", false),
 	}
+
+	pollTargets, err := parsePollTargets(os.Getenv("ACTIVE_POLL_TARGETS"))
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.PollTargets = pollTargets
 
 	if cfg.KafkaServiceURI == "" {
 		return Config{}, fmt.Errorf("KAFKA_SERVICE_URI is required")
@@ -79,8 +111,85 @@ func Load() (Config, error) {
 	if cfg.PublishWorkerCount <= 0 {
 		return Config{}, fmt.Errorf("PUBLISH_WORKER_COUNT must be > 0")
 	}
+	if cfg.LiveTrackRetention <= 0 {
+		return Config{}, fmt.Errorf("LIVE_TRACK_RETENTION_MINUTES must be > 0")
+	}
+	if cfg.ActivePolling && len(cfg.PollTargets) == 0 {
+		return Config{}, fmt.Errorf("ACTIVE_POLL_TARGETS must include at least one target when ACTIVE_POLLING_ENABLED=true")
+	}
 
 	return cfg, nil
+}
+
+func parsePollTargets(raw string) ([]PollTargetConfig, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	var targets []PollTargetConfig
+	if err := json.Unmarshal([]byte(raw), &targets); err != nil {
+		return nil, fmt.Errorf("ACTIVE_POLL_TARGETS must be valid JSON array: %w", err)
+	}
+
+	for i := range targets {
+		t := &targets[i]
+		t.Name = strings.TrimSpace(t.Name)
+		t.OrgID = strings.TrimSpace(t.OrgID)
+		t.APIID = strings.TrimSpace(t.APIID)
+		t.BaseURL = strings.TrimSpace(t.BaseURL)
+		t.Path = strings.TrimSpace(t.Path)
+		t.Method = strings.ToUpper(strings.TrimSpace(t.Method))
+		t.ClientRegion = strings.TrimSpace(t.ClientRegion)
+		t.SchemaVersion = strings.TrimSpace(t.SchemaVersion)
+		if t.IntervalSeconds <= 0 {
+			t.IntervalSeconds = 30
+		}
+		if t.TimeoutMS <= 0 {
+			t.TimeoutMS = 5000
+		}
+		if t.Method == "" {
+			t.Method = "GET"
+		}
+		if t.SchemaVersion == "" {
+			t.SchemaVersion = "active-poll.v1"
+		}
+		if t.OrgID == "" || t.APIID == "" || t.BaseURL == "" || t.Path == "" {
+			return nil, fmt.Errorf("ACTIVE_POLL_TARGETS[%d] must include org_id, api_id, base_url, and path", i)
+		}
+	}
+
+	return targets, nil
+}
+
+func loadDotEnv() {
+	paths := []string{".env"}
+
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		paths = append(paths,
+			filepath.Join(execDir, ".env"),
+			filepath.Join(execDir, "..", ".env"),
+		)
+	}
+
+	seen := make(map[string]struct{}, len(paths))
+	uniquePaths := make([]string, 0, len(paths))
+	for _, path := range paths {
+		cleanPath := filepath.Clean(path)
+		if _, exists := seen[cleanPath]; exists {
+			continue
+		}
+		seen[cleanPath] = struct{}{}
+		uniquePaths = append(uniquePaths, cleanPath)
+	}
+
+	for _, path := range uniquePaths {
+		if _, err := os.Stat(path); err == nil {
+			_ = godotenv.Load(path)
+		}
+	}
 }
 
 func getEnv(key, fallback string) string {

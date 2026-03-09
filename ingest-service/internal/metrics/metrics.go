@@ -13,6 +13,9 @@ type Registry struct {
 	eventsPublished     int64
 	kafkaErrorsTotal    int64
 	batchFlushTotal     int64
+	polledEventsQueued  int64
+	pollingErrorsTotal  int64
+	pollingDroppedTotal int64
 }
 
 func NewRegistry() *Registry {
@@ -39,6 +42,18 @@ func (r *Registry) IncBatchFlush() {
 	atomic.AddInt64(&r.batchFlushTotal, 1)
 }
 
+func (r *Registry) IncPolledEventsQueued() {
+	atomic.AddInt64(&r.polledEventsQueued, 1)
+}
+
+func (r *Registry) IncPollingErrors() {
+	atomic.AddInt64(&r.pollingErrorsTotal, 1)
+}
+
+func (r *Registry) IncPollingDropped() {
+	atomic.AddInt64(&r.pollingDroppedTotal, 1)
+}
+
 func (r *Registry) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	_, _ = w.Write([]byte(r.Render()))
@@ -51,6 +66,9 @@ func (r *Registry) Render() string {
 	appendCounter(&b, "events_published_total", atomic.LoadInt64(&r.eventsPublished))
 	appendCounter(&b, "kafka_errors_total", atomic.LoadInt64(&r.kafkaErrorsTotal))
 	appendCounter(&b, "batch_flush_total", atomic.LoadInt64(&r.batchFlushTotal))
+	appendCounter(&b, "polled_events_queued_total", atomic.LoadInt64(&r.polledEventsQueued))
+	appendCounter(&b, "polling_errors_total", atomic.LoadInt64(&r.pollingErrorsTotal))
+	appendCounter(&b, "polling_dropped_total", atomic.LoadInt64(&r.pollingDroppedTotal))
 	return b.String()
 }
 

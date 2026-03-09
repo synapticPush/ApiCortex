@@ -5,23 +5,26 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/rs/zerolog"
 
 	"ingest-service/internal/buffer"
 	"ingest-service/internal/metrics"
 	"ingest-service/internal/model"
+	"ingest-service/internal/tracker"
 )
 
 type Handler struct {
 	batcher         *buffer.Batcher
 	metrics         *metrics.Registry
+	tracker         *tracker.LiveTracker
 	logger          zerolog.Logger
 	maxEventsPerReq int
 }
 
-func NewHandler(b *buffer.Batcher, m *metrics.Registry, logger zerolog.Logger, maxEventsPerReq int) *Handler {
-	return &Handler{batcher: b, metrics: m, logger: logger, maxEventsPerReq: maxEventsPerReq}
+func NewHandler(b *buffer.Batcher, m *metrics.Registry, t *tracker.LiveTracker, logger zerolog.Logger, maxEventsPerReq int) *Handler {
+	return &Handler{batcher: b, metrics: m, tracker: t, logger: logger, maxEventsPerReq: maxEventsPerReq}
 }
 
 func (h *Handler) IngestTelemetry(w http.ResponseWriter, r *http.Request) {
@@ -70,12 +73,46 @@ func (h *Handler) IngestTelemetry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.metrics.AddEventsReceived(len(events))
+	for i := range events {
+		h.tracker.Observe(events[i])
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"accepted": len(events),
 		"status":   "queued",
+	})
+}
+
+func (h *Handler) ListLiveEndpoints(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	limit := 100
+	rawLimit := r.URL.Query().Get("limit")
+	if rawLimit != "" {
+		parsedLimit, err := strconv.Atoi(rawLimit)
+		if err != nil {
+			http.Error(w, "invalid limit", http.StatusBadRequest)
+			return
+		}
+		limit = parsedLimit
+	}
+
+	orgID := r.URL.Query().Get("org_id")
+	apiID := r.URL.Query().Get("api_id")
+	method := r.URL.Query().Get("method")
+	endpointContains := r.URL.Query().Get("endpoint_contains")
+
+	items := h.tracker.List(limit, orgID, apiID, method, endpointContains)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"count": len(items),
+		"items": items,
 	})
 }
 

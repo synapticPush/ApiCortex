@@ -5,11 +5,13 @@ ApiCortex data-plane telemetry ingestion service implemented in Go. It receives 
 ## Architecture
 
 - HTTP Ingest API: `POST /v1/telemetry`
+- Live endpoint state API: `GET /v1/endpoints/live`
 - Interactive API docs: `GET /swagger` (Swagger UI)
 - Validation: strict schema and rule checks for required ingestion and model-processing fields
 - Buffering: lock-free channel queue with backpressure
 - Batching: flush on `batch_size >= 500` or `flush_interval >= 2s`
 - Publish: worker goroutines push compressed batches to Kafka over mTLS
+- Active polling: optional endpoint polling workers that generate telemetry events and feed the same queue/publish pipeline
 - Observability: `/metrics`, `/health`, `/ready`
 - Security middleware: API key auth, request ID propagation, recovery, and hardened headers
 - Abuse protection: per-IP token-bucket rate limiting
@@ -18,16 +20,18 @@ ApiCortex data-plane telemetry ingestion service implemented in Go. It receives 
 
 ```text
 ingest-service/
-├── cmd/server/main.go
-├── internal/api/handler.go
-├── internal/buffer/batcher.go
-├── internal/config/config.go
-├── internal/kafka/producer.go
-├── internal/metrics/metrics.go
-├── internal/model/telemetry.go
-├── Dockerfile
-├── go.mod
-└── README.md
++-- cmd/server/main.go
++-- internal/api/handler.go
++-- internal/buffer/batcher.go
++-- internal/config/config.go
++-- internal/kafka/producer.go
++-- internal/metrics/metrics.go
++-- internal/model/telemetry.go
++-- internal/poller/poller.go
++-- internal/tracker/live_tracker.go
++-- Dockerfile
++-- go.mod
++-- README.md
 ```
 
 ## Event Schema
@@ -58,6 +62,18 @@ ingest-service/
 - Response: `202 Accepted` when queued
 - Backpressure: `429 Too Many Requests` when in-memory queue is full
 
+### GET /v1/endpoints/live
+
+Returns rolling live telemetry aggregates keyed by `org_id`, `api_id`, `endpoint`, and `method`.
+
+Query params:
+
+- `limit` (1..1000, default `100`)
+- `org_id`
+- `api_id`
+- `method`
+- `endpoint_contains`
+
 ### GET /health
 
 Returns process health.
@@ -75,6 +91,9 @@ Prometheus-style counters:
 - `events_published_total`
 - `kafka_errors_total`
 - `batch_flush_total`
+- `polled_events_queued_total`
+- `polling_errors_total`
+- `polling_dropped_total`
 
 ### GET /swagger
 
@@ -136,6 +155,31 @@ Optional:
 - `INGEST_API_KEY` (required when `REQUIRE_API_KEY=true`)
 - `RATE_LIMIT_RPS` (default `4000`)
 - `RATE_LIMIT_BURST` (default `8000`)
+- `LIVE_TRACK_RETENTION_MINUTES` (default `120`)
+- `ACTIVE_POLLING_ENABLED` (default `false`)
+- `ACTIVE_POLL_TARGETS` (JSON array; required when active polling is enabled)
+
+Example `ACTIVE_POLL_TARGETS` value:
+
+```json
+[
+  {
+    "name": "users-health",
+    "org_id": "00000000-0000-0000-0000-000000000001",
+    "api_id": "00000000-0000-0000-0000-000000000010",
+    "base_url": "https://api.example.com",
+    "path": "/health",
+    "method": "GET",
+    "interval_seconds": 15,
+    "timeout_ms": 3000,
+    "headers": {
+      "X-Internal-Token": "token"
+    },
+    "client_region": "ap-south-1",
+    "schema_version": "active-poll.v1"
+  }
+]
+```
 
 ## Run Locally
 
@@ -145,7 +189,7 @@ export INGEST_API_KEY='replace-with-strong-key'
 go run ./cmd/server
 ```
 
-Auth headers for `POST /v1/telemetry`:
+Auth headers for protected API endpoints:
 
 - `X-API-Key: <INGEST_API_KEY>`
 - `Authorization: Bearer <INGEST_API_KEY>`
