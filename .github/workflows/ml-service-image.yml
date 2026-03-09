@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - dev
     paths:
       - ml-service/**
       - .github/workflows/ml-service-image.yml
