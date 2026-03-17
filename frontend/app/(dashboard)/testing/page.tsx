@@ -1,149 +1,215 @@
 "use client";
 
-import { useState } from "react";
-import { 
-  Tabs, 
-  TabsContent, 
-  TabsList, 
-  TabsTrigger 
-} from "@/components/ui/tabs";
+import { useState, useEffect } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Play, Save, Plus, FolderTree, FileJson, Clock, CheckCircle2, AlertTriangle, XCircle, TerminalSquare, ChevronDown, ChevronRight } from "lucide-react";
-import { mockDomains, Domain, Endpoint } from "@/lib/mock-data";
+import {
+  Play,
+  Save,
+  Plus,
+  FolderTree,
+  FileJson,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  TerminalSquare,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
+import { apiClient } from "@/lib/api-client";
+import { API, ContractValidation, Endpoint } from "@/lib/api-types";
+
+type TestResponseState = {
+  status: number;
+  time: string;
+  size: string;
+  body: string;
+  headers: Record<string, string>;
+  contractValidation: ContractValidation;
+};
 
 export default function TestingPage() {
   const [method, setMethod] = useState("GET");
   const [url, setUrl] = useState("https://api.acme.com/users/");
   const [isSending, setIsSending] = useState(false);
-  const [response, setResponse] = useState<any>(null);
+  const [response, setResponse] = useState<TestResponseState | null>(null);
   const [activeEndpoint, setActiveEndpoint] = useState<Endpoint | null>(null);
 
-  const [expandedCollections, setExpandedCollections] = useState<Record<string, boolean>>({
-    domain_1: true // Open the first domain by default
-  });
+  const [domains, setDomains] = useState<(API & { endpoints?: Endpoint[] })[]>(
+    [],
+  );
+  const [expandedCollections, setExpandedCollections] = useState<
+    Record<string, boolean>
+  >({});
+  const [requestBody, setRequestBody] = useState(
+    '{\n  "limit": 100,\n  "status": "active"\n}',
+  );
 
-  const toggleCollection = (id: string) => {
-    setExpandedCollections(prev => ({ ...prev, [id]: !prev[id] }));
+  useEffect(() => {
+    fetchApiData();
+  }, []);
+
+  const fetchApiData = async () => {
+    try {
+      const apiRes = await apiClient.get<API[]>("/apis");
+      const initialDomains: (API & { endpoints?: Endpoint[] })[] = [];
+      const expanded: Record<string, boolean> = {};
+
+      for (const api of apiRes.data) {
+        try {
+          const eps = await apiClient.get<Endpoint[]>(
+            `/apis/${api.id}/endpoints`,
+          );
+          initialDomains.push({ ...api, endpoints: eps.data });
+        } catch {
+          initialDomains.push({ ...api, endpoints: [] });
+        }
+        expanded[api.id] = false;
+      }
+
+      setDomains(initialDomains);
+      if (initialDomains.length > 0) {
+        expanded[initialDomains[0].id] = true;
+      }
+      setExpandedCollections(expanded);
+    } catch (error) {
+      console.error(error);
+    }
   };
 
-  const selectEndpoint = (domain: Domain, ep: Endpoint) => {
+  const toggleCollection = (id: string) => {
+    setExpandedCollections((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const selectEndpoint = (domain: API, ep: Endpoint) => {
     setActiveEndpoint(ep);
     setMethod(ep.method);
-    // Rough URL assembly for demo
-    const cleanBase = domain.baseUrl.replace(/\/$/, '');
-    const cleanPath = ep.path.replace(/^\//, '');
+    const cleanBase = domain.base_url.replace(new RegExp("/$"), "");
+    const cleanPath = ep.path.replace(new RegExp("^/"), "");
     setUrl(`${cleanBase}/${cleanPath}`);
   };
 
   const getMethodColor = (method: string) => {
-    switch(method) {
-      case "GET": return "text-[#00C2A8]";
-      case "POST": return "text-[#5B5DFF]";
-      case "PUT": return "text-[#F5B74F]";
-      case "DELETE": return "text-[#FF5C5C]";
-      case "PATCH": return "text-[#3A8DFF]";
-      default: return "text-[#E6EAF2]";
+    switch (method) {
+      case "GET":
+        return "text-[#00C2A8]";
+      case "POST":
+        return "text-[#5B5DFF]";
+      case "PUT":
+        return "text-[#F5B74F]";
+      case "DELETE":
+        return "text-[#FF5C5C]";
+      case "PATCH":
+        return "text-[#3A8DFF]";
+      default:
+        return "text-[#E6EAF2]";
     }
   };
 
-  const generateMockData = () => {
-    // Generate realistic response based on the active endpoint or URL
-    let status = 200;
-    let body: any = { message: "Success" };
-    let size = "1.2KB";
-    const time = Math.floor(Math.random() * 250 + 40) + "ms";
-    let contractStatus = "valid";
-
-    if (activeEndpoint) {
-      // Map based on endpoint name
-      const name = activeEndpoint.name.toLowerCase();
-      if (name.includes("list users")) {
-        body = { data: [{ id: "usr_1", name: "Alice", role: "admin" }, { id: "usr_2", name: "Bob", role: "user" }], meta: { total: 2 } };
-        size = "2.4KB";
-      } else if (name.includes("create user")) {
-        status = 201; body = { id: "usr_new", message: "User created" }; size = "800B";
-      } else if (name.includes("get user")) {
-        body = { id: "usr_123", name: "John Doe", email: "john@example.com", preferences: { theme: "dark" } };
-      } else if (name.includes("delete")) {
-        status = 204; body = null; size = "0B";
-      } else if (name.includes("charge")) {
-        if (method === "POST") { status = 201; body = { id: "ch_1A2B3C", amount: 5000, currency: "usd", status: "succeeded" }; }
-        else { body = { id: "ch_1A2B3C", amount: 5000, status: "succeeded", receipt_url: "https://acme.com/receipts/ch_1A2B3C" }; }
-      } else if (name.includes("refund")) {
-        status = 201; body = { id: "re_9X8Y7Z", charge: "ch_1A2B3C", amount: 5000, status: "pending" };
-      } else if (name.includes("products")) {
-        if (method === "GET") { body = { items: [{ id: "prod_1", name: "Ergo Mouse", stock: 15 }, { id: "prod_2", name: "Mech Keyboard", stock: 4 }] }; }
-        else { status = 201; body = { id: "prod_new", success: true }; }
-      } else if (name.includes("email") || name.includes("sms") || name.includes("push")) {
-        status = 202; body = { messageId: "msg_" + Math.random().toString(36).substring(7), status: "queued" }; size = "450B";
-      } else if (name.includes("metrics") || name.includes("analytics") || name.includes("active users")) {
-        body = { activeUsers: 14205, newSignups: 340, revenue: 84500.50, trends: [100, 105, 110, 115, 120] };
-        size = "1.8KB";
-      } else {
-        body = { success: true, ref: activeEndpoint.id };
-      }
-    } else {
-      // Fallback based on method/url heuristics
-      if (method === "GET") {
-        body = { data: { id: "req_" + Date.now(), received_at: new Date().toISOString() } };
-      } else if (method === "POST") {
-        status = 201; body = { id: "new_" + Date.now(), created: true }; size = "850B";
-      } else if (method === "DELETE") {
-        status = 204; body = null; size = "0B";
-      } else {
-        body = { updated: true, timestamp: Date.now() };
-      }
-    }
-
-    if (Math.random() > 0.85) {
-      contractStatus = "warning";
-    }
-
-    return {
-      status,
-      time,
-      size,
-      body: body ? JSON.stringify(body, null, 2) : "",
-      contractStatus
-    };
-  };
-
-  const handleSend = () => {
+  const handleSend = async () => {
     setIsSending(true);
-    // Mock API call latency
-    setTimeout(() => {
-      setResponse(generateMockData());
+    setResponse(null);
+    try {
+      let parsedBody = null;
+      if (method !== "GET" && method !== "DELETE" && requestBody) {
+        try {
+          parsedBody = JSON.parse(requestBody);
+        } catch {
+          parsedBody = requestBody;
+        }
+      }
+
+      const res = await apiClient.post("/testing/request", {
+        method,
+        url,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: parsedBody,
+      });
+
+      const proxyData = res.data;
+      const respDataStr =
+        typeof proxyData.body === "object"
+          ? JSON.stringify(proxyData.body, null, 2)
+          : String(proxyData.body || "");
+
+      setResponse({
+        status: proxyData.status,
+        time: `${proxyData.time_ms}ms`,
+        size: `${(proxyData.size_bytes / 1024).toFixed(2)}KB`,
+        body: respDataStr,
+        headers: proxyData.headers || {},
+        contractValidation: proxyData.contract_validation,
+      });
+    } catch (error: unknown) {
+      const axiosError = error as {
+        response?: { status?: number; data?: unknown };
+        message?: string;
+      };
+      const status = axiosError.response?.status || 0;
+      const rawData =
+        axiosError.response?.data ?? axiosError.message ?? "Request failed";
+      const respDataStr =
+        typeof rawData === "object"
+          ? JSON.stringify(rawData, null, 2)
+          : String(rawData);
+      let fallbackPath = "/";
+      try {
+        fallbackPath = new URL(url).pathname;
+      } catch {
+        fallbackPath = url.startsWith("/") ? url : "/";
+      }
+      setResponse({
+        status: status,
+        time: `error`,
+        size: `0KB`,
+        body: respDataStr,
+        headers: {},
+        contractValidation: {
+          status: "warning",
+          endpoint_id: null,
+          path: fallbackPath,
+          method,
+          contract_hash: null,
+          observed_hash: null,
+        },
+      });
+    } finally {
       setIsSending(false);
-    }, 600 + Math.random() * 400); // 600-1000ms delay
+    }
   };
 
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col">
       <div className="flex-1 w-full flex rounded-2xl border border-[#242938] overflow-hidden shadow-2xl">
-        
-        {/* Left Panel: Collections Fixed Width */}
         <div className="w-[280px] shrink-0 border-r border-[#242938] bg-[#0F1117]">
           <div className="p-4 h-full flex flex-col min-w-0">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-[#E6EAF2] uppercase tracking-wider truncate">Collections</h2>
-              <Button variant="ghost" size="icon" className="w-6 h-6 shrink-0 text-[#9AA3B2] hover:text-[#E6EAF2]">
+              <h2 className="text-sm font-semibold text-[#E6EAF2] uppercase tracking-wider truncate">
+                Collections
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="w-6 h-6 shrink-0 text-[#9AA3B2] hover:text-[#E6EAF2]"
+              >
                 <Plus className="w-4 h-4" />
               </Button>
             </div>
-            
             <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-1">
-              {mockDomains.map(domain => (
+              {domains.map((domain) => (
                 <div key={domain.id} className="group">
-                  <div 
+                  <div
                     onClick={() => toggleCollection(domain.id)}
                     className="flex items-center gap-2 text-[#E6EAF2] text-sm font-medium p-2 hover:bg-[#161A23] rounded-lg cursor-pointer transition-colors"
                   >
@@ -155,17 +221,20 @@ export default function TestingPage() {
                     <FolderTree className="w-4 h-4 shrink-0 text-[#3A8DFF]" />
                     <span className="truncate">{domain.name}</span>
                   </div>
-                  
-                  {expandedCollections[domain.id] && (
+                  {expandedCollections[domain.id] && domain.endpoints && (
                     <div className="pl-6 mt-1 space-y-1 mb-2">
-                      {domain.endpoints.map(ep => (
-                        <div 
+                      {domain.endpoints.map((ep) => (
+                        <div
                           key={ep.id}
                           onClick={() => selectEndpoint(domain, ep)}
-                          className={`flex items-center gap-2 text-xs p-1.5 rounded-md cursor-pointer transition-colors ${activeEndpoint?.id === ep.id ? 'bg-[#242938] text-[#E6EAF2]' : 'text-[#9AA3B2] hover:text-[#E6EAF2] hover:bg-[#161A23]'}`}
+                          className={`flex items-center gap-2 text-xs p-1.5 rounded-md cursor-pointer transition-colors ${activeEndpoint?.id === ep.id ? "bg-[#242938] text-[#E6EAF2]" : "text-[#9AA3B2] hover:text-[#E6EAF2] hover:bg-[#161A23]"}`}
                         >
-                          <span className={`font-bold w-10 shrink-0 text-right text-[10px] ${getMethodColor(ep.method)}`}>{ep.method}</span>
-                          <span className="truncate">{ep.name}</span>
+                          <span
+                            className={`font-bold w-10 shrink-0 text-right text-[10px] ${getMethodColor(ep.method)}`}
+                          >
+                            {ep.method}
+                          </span>
+                          <span className="truncate">{ep.path}</span>
                         </div>
                       ))}
                     </div>
@@ -175,31 +244,39 @@ export default function TestingPage() {
             </div>
           </div>
         </div>
-
-        {/* Center Panel: Request Builder Flex-1 */}
         <div className="flex-1 flex flex-col bg-[#161A23] min-w-0">
-          {/* Request Bar */}
           <div className="p-4 border-b border-[#242938] flex gap-2 items-center bg-[#0F1117]/50 overflow-x-auto hidden-scrollbar">
-            <Select value={method} onValueChange={(val) => setMethod(val || "GET")}>
+            <Select
+              value={method}
+              onValueChange={(val) => setMethod(val || "GET")}
+            >
               <SelectTrigger className="w-24 shrink-0 bg-[#161A23] border-[#242938] text-[#E6EAF2] focus:ring-[#5B5DFF] font-mono font-bold">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-[#161A23] border-[#242938] text-[#E6EAF2]">
-                <SelectItem value="GET" className="text-[#00C2A8] font-bold">GET</SelectItem>
-                <SelectItem value="POST" className="text-[#5B5DFF] font-bold">POST</SelectItem>
-                <SelectItem value="PUT" className="text-[#F5B74F] font-bold">PUT</SelectItem>
-                <SelectItem value="PATCH" className="text-[#3A8DFF] font-bold">PATCH</SelectItem>
-                <SelectItem value="DELETE" className="text-[#FF5C5C] font-bold">DELETE</SelectItem>
+                <SelectItem value="GET" className="text-[#00C2A8] font-bold">
+                  GET
+                </SelectItem>
+                <SelectItem value="POST" className="text-[#5B5DFF] font-bold">
+                  POST
+                </SelectItem>
+                <SelectItem value="PUT" className="text-[#F5B74F] font-bold">
+                  PUT
+                </SelectItem>
+                <SelectItem value="PATCH" className="text-[#3A8DFF] font-bold">
+                  PATCH
+                </SelectItem>
+                <SelectItem value="DELETE" className="text-[#FF5C5C] font-bold">
+                  DELETE
+                </SelectItem>
               </SelectContent>
             </Select>
-            
-            <Input 
+            <Input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               className="flex-1 min-w-[100px] bg-[#161A23] border-[#242938] text-[#E6EAF2] font-mono focus-visible:ring-[#5B5DFF]"
             />
-            
-            <Button 
+            <Button
               onClick={handleSend}
               disabled={isSending}
               className="shrink-0 bg-[#5B5DFF] hover:bg-[#5B5DFF]/90 text-white gap-2 font-medium shadow-[0_0_15px_rgba(91,93,255,0.4)] transition-all min-w-[90px]"
@@ -212,28 +289,55 @@ export default function TestingPage() {
                 </>
               )}
             </Button>
-            <Button variant="outline" size="icon" className="shrink-0 border-[#242938] text-[#9AA3B2] hover:text-[#E6EAF2] hover:bg-[#242938]">
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 border-[#242938] text-[#9AA3B2] hover:text-[#E6EAF2] hover:bg-[#242938]"
+            >
               <Save className="w-4 h-4" />
             </Button>
           </div>
-
-          {/* Request Builder Tabs */}
           <div className="flex-1 p-0 overflow-hidden flex flex-col min-w-0">
             <Tabs defaultValue="headers" className="h-full flex flex-col">
               <div className="border-b border-[#242938] px-4 overflow-x-auto hidden-scrollbar">
                 <TabsList className="bg-transparent h-12 p-0 space-x-6 w-max">
-                  <TabsTrigger value="params" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#5B5DFF] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-3 px-0">Params</TabsTrigger>
-                  <TabsTrigger value="headers" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#5B5DFF] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-3 px-0">
-                    Headers <Badge variant="secondary" className="ml-2 bg-[#242938] text-xs px-1.5 h-4">2</Badge>
+                  <TabsTrigger
+                    value="params"
+                    className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#5B5DFF] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-3 px-0"
+                  >
+                    Params
                   </TabsTrigger>
-                  <TabsTrigger value="body" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#5B5DFF] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-3 px-0">Body</TabsTrigger>
-                  <TabsTrigger value="auth" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#5B5DFF] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-3 px-0">Auth</TabsTrigger>
+                  <TabsTrigger
+                    value="headers"
+                    className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#5B5DFF] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-3 px-0"
+                  >
+                    Headers{" "}
+                    <Badge
+                      variant="secondary"
+                      className="ml-2 bg-[#242938] text-xs px-1.5 h-4"
+                    >
+                      2
+                    </Badge>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="body"
+                    className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#5B5DFF] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-3 px-0"
+                  >
+                    Body
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="auth"
+                    className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#5B5DFF] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-3 px-0"
+                  >
+                    Auth
+                  </TabsTrigger>
                 </TabsList>
               </div>
-              
-              <TabsContent value="headers" className="flex-1 p-0 m-0 border-none outline-none overflow-auto">
+              <TabsContent
+                value="headers"
+                className="flex-1 p-0 m-0 border-none outline-none overflow-auto"
+              >
                 <div className="w-full min-w-[400px]">
-                  {/* Mock Headers Grid */}
                   <div className="grid grid-cols-[30px_1fr_1fr_30px] border-b border-[#242938] bg-[#0F1117]/50 text-xs text-[#9AA3B2] font-medium">
                     <div className="p-2 border-r border-[#242938] text-center"></div>
                     <div className="p-2 border-r border-[#242938]">Key</div>
@@ -242,34 +346,68 @@ export default function TestingPage() {
                   </div>
                   <div className="grid grid-cols-[30px_1fr_1fr_30px] border-b border-[#242938] group">
                     <div className="p-2 border-r border-[#242938] flex items-center justify-center">
-                      <input type="checkbox" defaultChecked className="accent-[#5B5DFF]" />
+                      <input
+                        type="checkbox"
+                        defaultChecked
+                        className="accent-[#5B5DFF]"
+                      />
                     </div>
-                    <input type="text" defaultValue="Content-Type" className="p-2 border-r border-[#242938] bg-transparent text-[#E6EAF2] font-mono text-sm outline-none focus:bg-[#242938]/30 w-full" />
-                    <input type="text" defaultValue="application/json" className="p-2 border-r border-[#242938] bg-transparent text-[#E6EAF2] font-mono text-sm outline-none focus:bg-[#242938]/30 w-full" />
+                    <input
+                      type="text"
+                      defaultValue="Content-Type"
+                      className="p-2 border-r border-[#242938] bg-transparent text-[#E6EAF2] font-mono text-sm outline-none focus:bg-[#242938]/30 w-full"
+                    />
+                    <input
+                      type="text"
+                      defaultValue="application/json"
+                      className="p-2 border-r border-[#242938] bg-transparent text-[#E6EAF2] font-mono text-sm outline-none focus:bg-[#242938]/30 w-full"
+                    />
                     <div className="p-2 flex items-center justify-center">
                       <XCircle className="w-4 h-4 text-[#FF5C5C] opacity-0 group-hover:opacity-100 cursor-pointer" />
                     </div>
                   </div>
                   <div className="grid grid-cols-[30px_1fr_1fr_30px] border-b border-[#242938] group">
                     <div className="p-2 border-r border-[#242938] flex items-center justify-center">
-                      <input type="checkbox" defaultChecked className="accent-[#5B5DFF]" />
+                      <input
+                        type="checkbox"
+                        defaultChecked
+                        className="accent-[#5B5DFF]"
+                      />
                     </div>
-                    <input type="text" defaultValue="Authorization" className="p-2 border-r border-[#242938] bg-transparent text-[#E6EAF2] font-mono text-sm outline-none focus:bg-[#242938]/30 w-full" />
-                    <input type="text" defaultValue="Bearer eyJhbGc..." className="p-2 border-r border-[#242938] bg-transparent text-[#E6EAF2] font-mono text-sm outline-none focus:bg-[#242938]/30 w-full text-ellipsis" />
+                    <input
+                      type="text"
+                      defaultValue="Authorization"
+                      className="p-2 border-r border-[#242938] bg-transparent text-[#E6EAF2] font-mono text-sm outline-none focus:bg-[#242938]/30 w-full"
+                    />
+                    <input
+                      type="text"
+                      defaultValue="Bearer eyJhbGc..."
+                      className="p-2 border-r border-[#242938] bg-transparent text-[#E6EAF2] font-mono text-sm outline-none focus:bg-[#242938]/30 w-full text-ellipsis"
+                    />
                     <div className="p-2 flex items-center justify-center">
                       <XCircle className="w-4 h-4 text-[#FF5C5C] opacity-0 group-hover:opacity-100 cursor-pointer" />
                     </div>
                   </div>
                   <div className="grid grid-cols-[30px_1fr_1fr_30px] border-b border-[#242938]">
                     <div className="p-2 border-r border-[#242938]"></div>
-                    <input type="text" placeholder="Key" className="p-2 border-r border-[#242938] bg-transparent text-[#9AA3B2] placeholder:text-[#9AA3B2]/50 font-mono text-sm outline-none focus:bg-[#242938]/30 w-full" />
-                    <input type="text" placeholder="Value" className="p-2 border-r border-[#242938] bg-transparent text-[#9AA3B2] placeholder:text-[#9AA3B2]/50 font-mono text-sm outline-none focus:bg-[#242938]/30 w-full" />
+                    <input
+                      type="text"
+                      placeholder="Key"
+                      className="p-2 border-r border-[#242938] bg-transparent text-[#9AA3B2] placeholder:text-[#9AA3B2]/50 font-mono text-sm outline-none focus:bg-[#242938]/30 w-full"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Value"
+                      className="p-2 border-r border-[#242938] bg-transparent text-[#9AA3B2] placeholder:text-[#9AA3B2]/50 font-mono text-sm outline-none focus:bg-[#242938]/30 w-full"
+                    />
                     <div className="p-2"></div>
                   </div>
                 </div>
               </TabsContent>
-
-              <TabsContent value="body" className="flex-1 p-0 m-0 border-none outline-none relative bg-[#0F1117]/80">
+              <TabsContent
+                value="body"
+                className="flex-1 p-0 m-0 border-none outline-none relative bg-[#0F1117]/80"
+              >
                 <div className="absolute top-2 right-4 z-10">
                   <Select defaultValue="json">
                     <SelectTrigger className="h-7 text-xs bg-[#242938] border-[#242938] text-[#E6EAF2] rounded-md">
@@ -282,94 +420,157 @@ export default function TestingPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <textarea 
+                <textarea
                   className="w-full h-full bg-transparent p-4 font-mono text-sm text-[#00C2A8] outline-none resize-none leading-relaxed placeholder:text-[#9AA3B2]/50"
                   placeholder="Enter request body here..."
                   spellCheck="false"
-                  defaultValue="{\n  \"limit\": 100,\n  \"status\": \"active\"\n}"
-                ></textarea>
+                  value={requestBody}
+                  onChange={(e) => setRequestBody(e.target.value)}
+                />
               </TabsContent>
-              
-              <TabsContent value="params" className="flex-1 p-4 m-0 text-sm text-[#9AA3B2]">
+              <TabsContent
+                value="params"
+                className="flex-1 p-4 m-0 text-sm text-[#9AA3B2]"
+              >
                 No parameters configured.
               </TabsContent>
-              
-              <TabsContent value="auth" className="flex-1 p-4 m-0 text-sm text-[#9AA3B2]">
+              <TabsContent
+                value="auth"
+                className="flex-1 p-4 m-0 text-sm text-[#9AA3B2]"
+              >
                 Using global Bearer token from settings.
               </TabsContent>
             </Tabs>
           </div>
         </div>
-
-        {/* Right Panel: Response Viewer w-[35%] ideally or min-w */}
         <div className="w-[35%] min-w-[300px] shrink-0 bg-[#0F1117] border-l border-[#242938] flex flex-col relative">
-          
           {response ? (
             <>
               <div className="p-3 border-b border-[#242938] flex items-center gap-4 bg-[#161A23]/50 overflow-x-auto hidden-scrollbar">
                 <div className="flex items-center gap-2 text-sm font-medium shrink-0">
                   <span className="text-[#9AA3B2]">Status</span>
-                  <span className={`font-bold flex items-center gap-1 ${response.status >= 200 && response.status < 300 ? 'text-[#2ED573]' : response.status >= 400 ? 'text-[#FF5C5C]' : 'text-[#F5B74F]'}`}>
-                    {response.status} {response.status === 200 ? "OK" : response.status === 201 ? "Created" : response.status === 204 ? "No Content" : "Error"}
+                  <span
+                    className={`font-bold flex items-center gap-1 ${response.status >= 200 && response.status < 300 ? "text-[#2ED573]" : response.status >= 400 ? "text-[#FF5C5C]" : "text-[#F5B74F]"}`}
+                  >
+                    {response.status}{" "}
+                    {response.status === 200
+                      ? "OK"
+                      : response.status === 201
+                        ? "Created"
+                        : response.status === 204
+                          ? "No Content"
+                          : "Error"}
                   </span>
                 </div>
                 <div className="w-px h-4 bg-[#242938] shrink-0" />
                 <div className="flex items-center gap-2 text-sm font-medium shrink-0">
                   <span className="text-[#9AA3B2]">Time</span>
-                  <span className="text-[#00C2A8] font-mono bg-[#00C2A8]/10 px-1.5 py-0.5 rounded">{response.time}</span>
+                  <span className="text-[#00C2A8] font-mono bg-[#00C2A8]/10 px-1.5 py-0.5 rounded">
+                    {response.time}
+                  </span>
                 </div>
                 <div className="w-px h-4 bg-[#242938] shrink-0" />
                 <div className="flex items-center gap-2 text-sm font-medium shrink-0">
                   <span className="text-[#9AA3B2]">Size</span>
-                  <span className="text-[#E6EAF2] font-mono">{response.size}</span>
+                  <span className="text-[#E6EAF2] font-mono">
+                    {response.size}
+                  </span>
                 </div>
               </div>
-
-              {/* Contract Validation Overlay */}
               <div className="bg-[#161A23] border-b border-[#242938] px-4 py-2 flex items-center justify-between">
                 <div className="flex items-center gap-2 truncate">
-                  {response.contractStatus === "valid" ? (
+                  {response.contractValidation.status === "valid" ? (
                     <>
                       <CheckCircle2 className="w-4 h-4 shrink-0 text-[#2ED573]" />
-                      <span className="text-sm font-medium text-[#E6EAF2] truncate">Contract Validation Passed</span>
+                      <span className="text-sm font-medium text-[#E6EAF2] truncate">
+                        Contract Validation Passed
+                      </span>
+                    </>
+                  ) : response.contractValidation.status === "missing" ? (
+                    <>
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-[#9AA3B2]" />
+                      <span className="text-sm font-medium text-[#9AA3B2] truncate">
+                        No Contract Found for Endpoint
+                      </span>
                     </>
                   ) : (
                     <>
                       <AlertTriangle className="w-4 h-4 shrink-0 text-[#F5B74F]" />
-                      <span className="text-sm font-medium text-[#F5B74F] truncate">Contract Mismatch Warning</span>
+                      <span className="text-sm font-medium text-[#F5B74F] truncate">
+                        Contract Mismatch Warning
+                      </span>
                     </>
                   )}
                 </div>
-                <Button variant="link" className="text-xs text-[#3A8DFF] h-auto p-0 hover:text-[#5B5DFF] shrink-0">View details</Button>
+                <div className="text-[11px] text-[#9AA3B2] truncate max-w-[45%] text-right">
+                  {response.contractValidation.path}{" "}
+                  {response.contractValidation.method}
+                </div>
               </div>
-
-              <Tabs defaultValue="body" className="flex-1 flex flex-col min-w-0 overflow-hidden">
+              <Tabs
+                defaultValue="body"
+                className="flex-1 flex flex-col min-w-0 overflow-hidden"
+              >
                 <div className="border-b border-[#242938] px-4 bg-[#161A23]/30 overflow-x-auto hidden-scrollbar">
                   <TabsList className="bg-transparent h-10 p-0 space-x-6 w-max">
-                    <TabsTrigger value="body" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#00C2A8] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-2 px-0">Body</TabsTrigger>
-                    <TabsTrigger value="headers" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#00C2A8] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-2 px-0">Headers</TabsTrigger>
+                    <TabsTrigger
+                      value="body"
+                      className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#00C2A8] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-2 px-0"
+                    >
+                      Body
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="headers"
+                      className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-[#00C2A8] data-[state=active]:text-[#E6EAF2] text-[#9AA3B2] rounded-none py-2 px-0"
+                    >
+                      Headers
+                    </TabsTrigger>
                   </TabsList>
                 </div>
-                
-                <TabsContent value="body" className="flex-1 p-0 m-0 overflow-auto bg-[#0F1117] h-full relative">
+                <TabsContent
+                  value="body"
+                  className="flex-1 p-0 m-0 overflow-auto bg-[#0F1117] h-full relative"
+                >
                   <div className="absolute top-2 right-4 flex gap-2">
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-[#9AA3B2] hover:text-[#E6EAF2] hover:bg-[#242938]">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-[#9AA3B2] hover:text-[#E6EAF2] hover:bg-[#242938]"
+                    >
                       <FileJson className="w-4 h-4" />
                     </Button>
                   </div>
                   {response.body ? (
                     <pre className="p-4 font-mono text-sm leading-relaxed overflow-auto h-full text-[#E6EAF2]">
-                      <code dangerouslySetInnerHTML={{ __html: syntaxHighlight(response.body) }} />
+                      <code>{response.body}</code>
                     </pre>
                   ) : (
-                    <div className="p-4 text-sm text-[#9AA3B2] font-mono italic">No response body.</div>
+                    <div className="p-4 text-sm text-[#9AA3B2] font-mono italic">
+                      No response body.
+                    </div>
                   )}
                 </TabsContent>
-                
-                <TabsContent value="headers" className="flex-1 p-4 m-0 overflow-auto bg-[#0F1117] text-sm font-mono text-[#9AA3B2]">
-                  content-type: {response.body ? 'application/json' : 'text/plain'}<br/>
-                  x-powered-by: ApiCortex Engine<br/>
-                  content-length: {response.body ? response.body.length : 0}
+                <TabsContent
+                  value="headers"
+                  className="flex-1 p-4 m-0 overflow-auto bg-[#0F1117] text-sm font-mono text-[#9AA3B2]"
+                >
+                  {Object.keys(response.headers).length === 0 ? (
+                    <span>No headers available.</span>
+                  ) : (
+                    Object.entries(response.headers).map(([key, value]) => (
+                      <div key={key}>
+                        {key}: {value}
+                      </div>
+                    ))
+                  )}
+                  <div className="mt-3 border-t border-[#242938] pt-3 text-[#E6EAF2]">
+                    Contract Hash:{" "}
+                    {response.contractValidation.contract_hash || "n/a"}
+                  </div>
+                  <div>
+                    Observed Hash:{" "}
+                    {response.contractValidation.observed_hash || "n/a"}
+                  </div>
                 </TabsContent>
               </Tabs>
             </>
@@ -378,34 +579,17 @@ export default function TestingPage() {
               <div className="w-16 h-16 mb-4 rounded-2xl bg-[#242938]/50 flex items-center justify-center shrink-0">
                 <TerminalSquare className="w-8 h-8 text-[#5B5DFF]/50" />
               </div>
-              <h3 className="text-lg font-medium text-[#E6EAF2] mb-2 truncate max-w-full">Ready to Send Response</h3>
-              <p className="w-full text-sm line-clamp-3">Hit Send to execute the request and see the response along with contract validation results here.</p>
+              <h3 className="text-lg font-medium text-[#E6EAF2] mb-2 truncate max-w-full">
+                Ready to Send Response
+              </h3>
+              <p className="w-full text-sm line-clamp-3">
+                Hit Send to execute the request and see the response along with
+                contract validation results here.
+              </p>
             </div>
           )}
-          
         </div>
       </div>
     </div>
   );
-}
-
-// Very basic JSON syntax highlighting helper for MVP
-function syntaxHighlight(json: string) {
-  if (!json) return "";
-  json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
-    let cls = 'text-[#3A8DFF]'; // number
-    if (/^"/.test(match)) {
-      if (/:$/.test(match)) {
-        cls = 'text-[#E6EAF2] font-semibold'; // key
-      } else {
-        cls = 'text-[#00C2A8]'; // string
-      }
-    } else if (/true|false/.test(match)) {
-      cls = 'text-[#FF5C5C]'; // boolean
-    } else if (/null/.test(match)) {
-      cls = 'text-[#F5B74F]'; // null
-    }
-    return '<span class="' + cls + '">' + match + '</span>';
-  });
 }
