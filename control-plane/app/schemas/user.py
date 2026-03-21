@@ -28,3 +28,40 @@ class OrgOut(BaseModel):
     name: str
     plan: str
     created_at: datetime
+
+
+class OrgUpdate(BaseModel):
+    name: str | None = None
+    plan: str | None = None
+
+
+class UserProfileUpdate(BaseModel):
+    name: str
+
+
+class MembershipOut(BaseModel):
+    user_id: uuid.UUID
+    org_id: uuid.UUID
+    role: str
+    email: EmailStr
+    name: str
+
+
+class MemberInvite(BaseModel):
+    email: EmailStr
+    name: str
+    role: str = "member"
+
+
+class MemberRoleUpdate(BaseModel):
+    role: str
+
+
+class IngestKeyStatusOut(BaseModel):
+    configured: bool
+    updated_at: datetime | None = None
+
+
+class IngestKeyRotateOut(BaseModel):
+    api_key: str
+    updated_at: datetime

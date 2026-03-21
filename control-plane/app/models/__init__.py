@@ -6,4 +6,5 @@ from app.models.job import Job
 from app.models.membership import Membership
 from app.models.openapi_spec import OpenAPISpec
 from app.models.organization import Organization
+from app.models.organization_ingest_key import OrganizationIngestKey
 from app.models.user import User

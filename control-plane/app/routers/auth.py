@@ -16,6 +16,8 @@ from app.core.security import (
     set_auth_cookies,
 )
 from app.db.session import get_db
+from app.models.user import User
+from app.schemas.user import UserOut, UserProfileUpdate
 from app.services.auth_service import AuthService
 
 
@@ -76,7 +78,8 @@ async def callback(provider: str, request: Request, db: Session = Depends(get_db
     access_token = create_access_token(claims)
     refresh_token = create_refresh_token(claims)
     csrf_token = generate_csrf_token()
-    response = RedirectResponse(url="/auth/me", status_code=status.HTTP_302_FOUND)
+    frontend_dashboard_url = f"{settings.frontend_app_url.rstrip('/')}/dashboard"
+    response = RedirectResponse(url=frontend_dashboard_url, status_code=status.HTTP_302_FOUND)
     set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token, csrf_token=csrf_token)
     return response
 
@@ -115,3 +118,25 @@ def logout(response: Response):
 @router.get("/me")
 def me(claims: dict = Depends(get_current_claims)):
     return claims
+
+
+@router.get("/profile", response_model=UserOut)
+def get_profile(claims: dict = Depends(get_current_claims), db: Session = Depends(get_db)):
+    user_id = uuid.UUID(str(claims["sub"]))
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
+@router.patch("/profile", response_model=UserOut)
+def update_profile(payload: UserProfileUpdate, claims: dict = Depends(get_current_claims), db: Session = Depends(get_db)):
+    user_id = uuid.UUID(str(claims["sub"]))
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    user.name = payload.name
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user

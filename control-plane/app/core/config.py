@@ -46,7 +46,18 @@ class Settings(BaseSettings):
     oauth_github_client_id: str = Field(default="", validation_alias="OAUTH_GITHUB_CLIENT_ID")
     oauth_github_client_secret: str = Field(default="", validation_alias="OAUTH_GITHUB_CLIENT_SECRET")
     oauth_redirect_base_url: str = Field(default="http://localhost:8000", validation_alias="OAUTH_REDIRECT_BASE_URL")
+    frontend_app_url: str = Field(default="http://localhost:3000", validation_alias="FRONTEND_APP_URL")
     session_secret_key: str = Field(default="dev-session-secret-change-in-prod", validation_alias="SESSION_SECRET_KEY")
+
+    kafka_service_uri: str = Field(default="", validation_alias="KAFKA_SERVICE_URI")
+    kafka_ca_cert: str = Field(default="", validation_alias="KAFKA_CA_CERT")
+    kafka_service_cert: str = Field(default="", validation_alias="KAFKA_SERVICE_CERT")
+    kafka_service_key: str = Field(default="", validation_alias="KAFKA_SERVICE_KEY")
+    kafka_topic_alerts: str = Field(default="alerts", validation_alias="KAFKA_TOPIC_ALERTS")
+    kafka_alerts_group_id: str = Field(default="apicortex-alert-subscriber", validation_alias="KAFKA_ALERTS_GROUP_ID")
+    alert_webhook_url: str = Field(default="", validation_alias="ALERT_WEBHOOK_URL")
+    alert_poll_timeout_seconds: float = Field(default=1.0, validation_alias="ALERT_POLL_TIMEOUT_SECONDS")
+    ingest_key_pepper: str = Field(default="", validation_alias="INGEST_KEY_PEPPER")
 
     @field_validator("app_env", mode="before")
     @classmethod
@@ -175,6 +186,16 @@ class Settings(BaseSettings):
         if normalized.startswith("postgresql://") and "+" not in normalized.split("://", 1)[0]:
             return normalized.replace("postgresql://", "postgresql+psycopg2://", 1)
         return normalized
+
+    @computed_field
+    @property
+    def kafka_brokers(self) -> list[str]:
+        return [broker.strip() for broker in self.kafka_service_uri.split(",") if broker.strip()]
+
+    @computed_field
+    @property
+    def alert_subscriber_enabled(self) -> bool:
+        return len(self.kafka_brokers) > 0
 
 
 settings = Settings()
