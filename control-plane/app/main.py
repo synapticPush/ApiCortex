@@ -1,3 +1,7 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+import asyncio
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -16,11 +20,26 @@ from app.core.middleware import (
 )
 from app.db.base import Base
 from app.db.session import engine
+from app.services.alert_subscriber import AlertSubscriber
+from app.services.job_worker import JobWorker
 import app.models
-from app.routers import apis, auth, contracts, dashboard, orgs
+from app.routers import apis, auth, contracts, dashboard, orgs, predictions, telemetry, testing
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    if settings.should_auto_create_tables:
+        Base.metadata.create_all(bind=engine)
+    stop_event = asyncio.Event()
+    worker_task = asyncio.create_task(JobWorker().run(stop_event))
+    alert_subscriber = AlertSubscriber(settings)
+    alert_subscriber.start()
+    yield
+    stop_event.set()
+    await worker_task
+    alert_subscriber.stop()
 
 
-app = FastAPI(title=settings.app_name, version="1.0.0")
+app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(PlanEnforcementMiddleware)
@@ -48,6 +67,9 @@ app.include_router(orgs.router, prefix="/orgs", tags=["orgs"], dependencies=[Dep
 app.include_router(apis.router, prefix="/apis", tags=["apis"], dependencies=[Depends(get_current_claims)])
 app.include_router(contracts.router, prefix="/contracts", tags=["contracts"], dependencies=[Depends(get_current_claims)])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_claims)])
+app.include_router(telemetry.router, prefix="/telemetry", tags=["telemetry"], dependencies=[Depends(get_current_claims)])
+app.include_router(predictions.router, prefix="/predictions", tags=["predictions"], dependencies=[Depends(get_current_claims)])
+app.include_router(testing.router, prefix="/testing", tags=["testing"], dependencies=[Depends(get_current_claims)])
 
 
 @app.get("/health")
@@ -80,9 +102,3 @@ def ready() -> dict:
         "database": db_status,
         "environment": settings.app_env,
     }
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    if settings.should_auto_create_tables:
-        Base.metadata.create_all(bind=engine)

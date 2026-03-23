@@ -41,6 +41,30 @@ class JobService:
 		return job
 
 	@staticmethod
+	def claim_next_available_job(db: Session) -> Job | None:
+		stmt = text(
+			"""
+			SELECT id FROM jobs
+			WHERE status = 'pending' AND run_at <= now()
+			ORDER BY run_at ASC
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+			"""
+		)
+		row = db.execute(stmt).first()
+		if not row:
+			return None
+		job = db.get(Job, row[0])
+		if not job:
+			return None
+		job.status = "running"
+		job.attempts += 1
+		db.add(job)
+		db.commit()
+		db.refresh(job)
+		return job
+
+	@staticmethod
 	def mark_job_failed_with_backoff(db: Session, job: Job, max_attempts: int = 5) -> Job:
 		if job.attempts >= max_attempts:
 			job.status = "failed"
@@ -60,3 +84,17 @@ class JobService:
 		db.commit()
 		db.refresh(job)
 		return job
+
+	@staticmethod
+	def delete_old_terminal_jobs(db: Session, retention_days: int = 30) -> int:
+		cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+		stmt = text(
+			"""
+			DELETE FROM jobs
+			WHERE status IN ('completed', 'failed')
+			  AND created_at < :cutoff
+			"""
+		)
+		result = db.execute(stmt, {"cutoff": cutoff})
+		db.commit()
+		return int(result.rowcount or 0)

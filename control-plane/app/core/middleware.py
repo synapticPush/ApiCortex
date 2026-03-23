@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import uuid
 from collections import defaultdict, deque
@@ -15,6 +16,10 @@ from app.core.config import settings
 from app.core.security import decode_token
 from app.db.session import SessionLocal
 from app.models.api import API
+from app.services.plan_service import PlanService
+
+
+logger = logging.getLogger("apicortex.control-plane")
 
 
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -63,7 +68,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             "org_id": str(getattr(request.state, "org_id", "")),
             "user_id": str(getattr(request.state, "user_id", "")),
         }
-        print(json.dumps(payload))
+        logger.info(json.dumps(payload, ensure_ascii=True))
         return response
 
 
@@ -121,19 +126,48 @@ class OrgScopeMiddleware(BaseHTTPMiddleware):
 
 
 class PlanEnforcementMiddleware(BaseHTTPMiddleware):
+    _quota_cache: dict[str, tuple[float, int]] = {}
+    _cache_ttl_seconds = 15.0
+    _cache_lock = Lock()
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if request.method == "POST" and request.url.path == "/apis":
             plan = (getattr(request.state, "plan", "free") or "free").lower()
             org_id = getattr(request.state, "org_id", None)
-            limit = {"free": 1, "pro": 10, "business": None}.get(plan, 1)
-            if org_id and limit is not None:
-                with SessionLocal() as db:
-                    total = db.scalar(select(func.count(API.id)).where(API.org_id == org_id))
-                    if total is not None and total >= limit:
-                        return JSONResponse(
-                            status_code=status.HTTP_403_FORBIDDEN,
-                            content={"detail": f"Plan limit reached for plan '{plan}'"},
-                        )
+            if org_id:
+                now = time.time()
+                cache_key = f"{org_id}:{plan}"
+                total = None
+                with self._cache_lock:
+                    cached = self._quota_cache.get(cache_key)
+                    if cached and (now - cached[0]) < self._cache_ttl_seconds:
+                        total = cached[1]
+                if total is None:
+                    with SessionLocal() as db:
+                        limit = PlanService.resolve_api_quota_limit(db, plan)
+                        if limit is None:
+                            return await call_next(request)
+                        queried_total = db.scalar(select(func.count(API.id)).where(API.org_id == org_id))
+                    total = int(queried_total or 0)
+                    with self._cache_lock:
+                        self._quota_cache[cache_key] = (now, total)
+                else:
+                    with SessionLocal() as db:
+                        limit = PlanService.resolve_api_quota_limit(db, plan)
+                        if limit is None:
+                            return await call_next(request)
+                if total >= limit:
+                    return JSONResponse(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        content={"detail": f"Plan limit reached for plan '{plan}'"},
+                    )
+
+                response = await call_next(request)
+                if 200 <= response.status_code < 300:
+                    with self._cache_lock:
+                        self._quota_cache[cache_key] = (time.time(), total + 1)
+                return response
+
         return await call_next(request)
 
 
