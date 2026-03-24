@@ -18,6 +18,9 @@ type Config struct {
 	KafkaCACert        string
 	KafkaServiceCert   string
 	KafkaServiceKey    string
+	ControlPlaneDBURL  string
+	TimescaleDatabase  string
+	IngestKeyPepper    string
 	RequireAPIKey      bool
 	IngestAPIKey       string
 	RateLimitRPS       int
@@ -28,6 +31,7 @@ type Config struct {
 	MaxEventsPerReq    int
 	PublishWorkerCount int
 	LiveTrackRetention time.Duration
+	OrgValidationTTL   time.Duration
 	ActivePolling      bool
 	PollTargets        []PollTargetConfig
 }
@@ -56,6 +60,9 @@ func Load() (Config, error) {
 		KafkaCACert:        strings.TrimSpace(os.Getenv("KAFKA_CA_CERT")),
 		KafkaServiceCert:   strings.TrimSpace(os.Getenv("KAFKA_SERVICE_CERT")),
 		KafkaServiceKey:    strings.TrimSpace(os.Getenv("KAFKA_SERVICE_KEY")),
+		ControlPlaneDBURL:  strings.TrimSpace(os.Getenv("DATABASE")),
+		TimescaleDatabase:  strings.TrimSpace(os.Getenv("TIMESCALE_DATABASE")),
+		IngestKeyPepper:    strings.TrimSpace(os.Getenv("INGEST_KEY_PEPPER")),
 		RequireAPIKey:      getEnvBool("REQUIRE_API_KEY", true),
 		IngestAPIKey:       strings.TrimSpace(os.Getenv("INGEST_API_KEY")),
 		RateLimitRPS:       getEnvInt("RATE_LIMIT_RPS", 4000),
@@ -66,6 +73,7 @@ func Load() (Config, error) {
 		MaxEventsPerReq:    getEnvInt("MAX_EVENTS_PER_REQUEST", 1000),
 		PublishWorkerCount: getEnvInt("PUBLISH_WORKER_COUNT", 4),
 		LiveTrackRetention: time.Duration(getEnvInt("LIVE_TRACK_RETENTION_MINUTES", 120)) * time.Minute,
+		OrgValidationTTL:   time.Duration(getEnvInt("ORG_VALIDATION_TTL_SECONDS", 60)) * time.Second,
 		ActivePolling:      getEnvBool("ACTIVE_POLLING_ENABLED", false),
 	}
 
@@ -113,6 +121,9 @@ func Load() (Config, error) {
 	}
 	if cfg.LiveTrackRetention <= 0 {
 		return Config{}, fmt.Errorf("LIVE_TRACK_RETENTION_MINUTES must be > 0")
+	}
+	if cfg.OrgValidationTTL <= 0 {
+		return Config{}, fmt.Errorf("ORG_VALIDATION_TTL_SECONDS must be > 0")
 	}
 	if cfg.ActivePolling && len(cfg.PollTargets) == 0 {
 		return Config{}, fmt.Errorf("ACTIVE_POLL_TARGETS must include at least one target when ACTIVE_POLLING_ENABLED=true")

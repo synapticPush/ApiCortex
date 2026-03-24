@@ -18,7 +18,9 @@ import (
 	"ingest-service/internal/config"
 	"ingest-service/internal/kafka"
 	"ingest-service/internal/metrics"
+	"ingest-service/internal/orgvalidator"
 	"ingest-service/internal/poller"
+	"ingest-service/internal/storage"
 	"ingest-service/internal/tracker"
 )
 
@@ -54,6 +56,30 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	orgValidator, err := orgvalidator.New(cfg.ControlPlaneDBURL, cfg.OrgValidationTTL, cfg.IngestKeyPepper)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to initialize organization validator")
+	}
+	if orgValidator != nil {
+		defer func() {
+			if err := orgValidator.Close(); err != nil {
+				log.Error().Err(err).Msg("failed to close organization validator")
+			}
+		}()
+	}
+
+	timescaleWriter, err := storage.NewTimescaleWriter(cfg.TimescaleDatabase)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to initialize timescale writer")
+	}
+	if timescaleWriter != nil {
+		defer func() {
+			if err := timescaleWriter.Close(); err != nil {
+				log.Error().Err(err).Msg("failed to close timescale writer")
+			}
+		}()
+	}
+
 	batcher := buffer.NewBatcher(
 		cfg.MaxBufferCapacity,
 		cfg.BatchSize,
@@ -62,11 +88,12 @@ func main() {
 		producer,
 		metricsRegistry,
 		log.Logger,
+		timescaleWriter,
 	)
 	batcher.Start(ctx)
 	defer batcher.Stop()
 
-	h := api.NewHandler(batcher, metricsRegistry, liveTracker, log.Logger, cfg.MaxEventsPerReq)
+	h := api.NewHandler(batcher, metricsRegistry, liveTracker, log.Logger, cfg.MaxEventsPerReq, orgValidator, cfg.IngestAPIKey)
 	rateLimiter := api.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst, 5*time.Minute)
 
 	var activePoller *poller.Poller

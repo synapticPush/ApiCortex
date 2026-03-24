@@ -19,6 +19,7 @@ import (
 type contextKey string
 
 const requestIDContextKey contextKey = "request_id"
+const ingestAPIKeyContextKey contextKey = "ingest_api_key"
 
 type ipLimiter struct {
 	limiter  *rate.Limiter
@@ -153,22 +154,44 @@ func APIKeyAuthMiddleware(require bool, apiKey string) func(http.Handler) http.H
 				next.ServeHTTP(w, r)
 				return
 			}
-
-			provided := strings.TrimSpace(r.Header.Get("X-API-Key"))
+			provided := ExtractProvidedAPIKey(r)
 			if provided == "" {
-				authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
-				if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-					provided = strings.TrimSpace(authHeader[7:])
-				}
-			}
-
-			if !secureEqual(provided, apiKey) {
 				writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
-			next.ServeHTTP(w, r)
+			if secureEqual(provided, apiKey) {
+				ctx := context.WithValue(r.Context(), ingestAPIKeyContextKey, provided)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			if r.URL.Path != "/v1/telemetry" {
+				writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			ctx := context.WithValue(r.Context(), ingestAPIKeyContextKey, provided)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func ExtractProvidedAPIKey(r *http.Request) string {
+	provided := strings.TrimSpace(r.Header.Get("X-API-Key"))
+	if provided != "" {
+		return provided
+	}
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		return strings.TrimSpace(authHeader[7:])
+	}
+	return ""
+}
+
+func ProvidedAPIKeyFromContext(ctx context.Context) string {
+	v := ctx.Value(ingestAPIKeyContextKey)
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
 }
 
 func RequestIDFromContext(ctx context.Context) string {

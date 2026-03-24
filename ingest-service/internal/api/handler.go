@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,10 +22,17 @@ type Handler struct {
 	tracker         *tracker.LiveTracker
 	logger          zerolog.Logger
 	maxEventsPerReq int
+	orgValidator    OrgValidator
+	masterAPIKey    string
 }
 
-func NewHandler(b *buffer.Batcher, m *metrics.Registry, t *tracker.LiveTracker, logger zerolog.Logger, maxEventsPerReq int) *Handler {
-	return &Handler{batcher: b, metrics: m, tracker: t, logger: logger, maxEventsPerReq: maxEventsPerReq}
+type OrgValidator interface {
+	Validate(ctx context.Context, orgID string) (bool, error)
+	ValidateIngestKey(ctx context.Context, orgID string, providedAPIKey string) (bool, error)
+}
+
+func NewHandler(b *buffer.Batcher, m *metrics.Registry, t *tracker.LiveTracker, logger zerolog.Logger, maxEventsPerReq int, orgValidator OrgValidator, masterAPIKey string) *Handler {
+	return &Handler{batcher: b, metrics: m, tracker: t, logger: logger, maxEventsPerReq: maxEventsPerReq, orgValidator: orgValidator, masterAPIKey: masterAPIKey}
 }
 
 func (h *Handler) IngestTelemetry(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +71,49 @@ func (h *Handler) IngestTelemetry(w http.ResponseWriter, r *http.Request) {
 		if err := events[i].ValidateForModelProcessing(); err != nil {
 			http.Error(w, fmt.Sprintf("event[%d] validation failed: %v", i, err), http.StatusBadRequest)
 			return
+		}
+	}
+
+	providedAPIKey := ProvidedAPIKeyFromContext(r.Context())
+	if h.masterAPIKey != "" && !secureEqual(providedAPIKey, h.masterAPIKey) && h.orgValidator == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if h.orgValidator != nil {
+		validatedOrgs := make(map[string]struct{}, len(events))
+		for i := range events {
+			orgID := events[i].OrgID
+			if _, exists := validatedOrgs[orgID]; exists {
+				continue
+			}
+			ok, err := h.orgValidator.Validate(r.Context(), orgID)
+			if err != nil {
+				http.Error(w, "organization validation unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if !ok {
+				http.Error(w, fmt.Sprintf("event[%d] unknown organization", i), http.StatusForbidden)
+				return
+			}
+			validatedOrgs[orgID] = struct{}{}
+		}
+		if !secureEqual(providedAPIKey, h.masterAPIKey) {
+			if len(validatedOrgs) != 1 {
+				http.Error(w, "org-scoped ingest key requires single-org payload", http.StatusBadRequest)
+				return
+			}
+			for orgID := range validatedOrgs {
+				keyValid, err := h.orgValidator.ValidateIngestKey(r.Context(), orgID, providedAPIKey)
+				if err != nil {
+					http.Error(w, "ingest key validation unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				if !keyValid {
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					return
+				}
+			}
 		}
 	}
 

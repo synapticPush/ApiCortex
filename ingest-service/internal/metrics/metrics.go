@@ -11,7 +11,9 @@ type Registry struct {
 	ingestRequestsTotal int64
 	eventsReceivedTotal int64
 	eventsPublished     int64
+	telemetryStored     int64
 	kafkaErrorsTotal    int64
+	storageErrorsTotal  int64
 	batchFlushTotal     int64
 	polledEventsQueued  int64
 	pollingErrorsTotal  int64
@@ -34,8 +36,16 @@ func (r *Registry) AddEventsPublished(n int) {
 	atomic.AddInt64(&r.eventsPublished, int64(n))
 }
 
+func (r *Registry) AddTelemetryStored(n int) {
+	atomic.AddInt64(&r.telemetryStored, int64(n))
+}
+
 func (r *Registry) IncKafkaErrors() {
 	atomic.AddInt64(&r.kafkaErrorsTotal, 1)
+}
+
+func (r *Registry) IncStorageErrors() {
+	atomic.AddInt64(&r.storageErrorsTotal, 1)
 }
 
 func (r *Registry) IncBatchFlush() {
@@ -64,7 +74,9 @@ func (r *Registry) Render() string {
 	appendCounter(&b, "ingest_requests_total", atomic.LoadInt64(&r.ingestRequestsTotal))
 	appendCounter(&b, "events_received_total", atomic.LoadInt64(&r.eventsReceivedTotal))
 	appendCounter(&b, "events_published_total", atomic.LoadInt64(&r.eventsPublished))
+	appendCounter(&b, "telemetry_stored_total", atomic.LoadInt64(&r.telemetryStored))
 	appendCounter(&b, "kafka_errors_total", atomic.LoadInt64(&r.kafkaErrorsTotal))
+	appendCounter(&b, "storage_errors_total", atomic.LoadInt64(&r.storageErrorsTotal))
 	appendCounter(&b, "batch_flush_total", atomic.LoadInt64(&r.batchFlushTotal))
 	appendCounter(&b, "polled_events_queued_total", atomic.LoadInt64(&r.polledEventsQueued))
 	appendCounter(&b, "polling_errors_total", atomic.LoadInt64(&r.pollingErrorsTotal))

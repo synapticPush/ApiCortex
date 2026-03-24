@@ -10,6 +10,7 @@ import (
 	"ingest-service/internal/kafka"
 	"ingest-service/internal/metrics"
 	"ingest-service/internal/model"
+	"ingest-service/internal/storage"
 )
 
 type Batcher struct {
@@ -21,11 +22,12 @@ type Batcher struct {
 	metrics       *metrics.Registry
 	logger        zerolog.Logger
 	workers       int
+	telemetrySink *storage.TimescaleWriter
 	wg            sync.WaitGroup
 	enqueueMu     sync.Mutex
 }
 
-func NewBatcher(maxCapacity, batchSize int, flushInterval time.Duration, workers int, producer *kafka.Producer, m *metrics.Registry, logger zerolog.Logger) *Batcher {
+func NewBatcher(maxCapacity, batchSize int, flushInterval time.Duration, workers int, producer *kafka.Producer, m *metrics.Registry, logger zerolog.Logger, telemetrySink *storage.TimescaleWriter) *Batcher {
 	if workers < 1 {
 		workers = 1
 	}
@@ -41,6 +43,7 @@ func NewBatcher(maxCapacity, batchSize int, flushInterval time.Duration, workers
 		metrics:       m,
 		logger:        logger,
 		workers:       workers,
+		telemetrySink: telemetrySink,
 	}
 }
 
@@ -134,6 +137,14 @@ func (b *Batcher) publish(batch []model.TelemetryEvent, workerID int) {
 	if err := b.producer.PublishBatch(pubCtx, batch); err != nil {
 		b.logger.Error().Err(err).Int("worker_id", workerID).Int("batch_size", len(batch)).Msg("failed to publish telemetry batch")
 		return
+	}
+	if b.telemetrySink != nil {
+		if err := b.telemetrySink.WriteBatch(pubCtx, batch); err != nil {
+			b.metrics.IncStorageErrors()
+			b.logger.Error().Err(err).Int("worker_id", workerID).Int("batch_size", len(batch)).Msg("failed to persist telemetry batch")
+		} else {
+			b.metrics.AddTelemetryStored(len(batch))
+		}
 	}
 	b.logger.Debug().Int("worker_id", workerID).Int("batch_size", len(batch)).Msg("published telemetry batch")
 }
