@@ -1,7 +1,7 @@
 import { config } from "dotenv";
 import { defineConfig } from "drizzle-kit";
 
-config({ path: "../.env" });
+config({ path: "../.env", override: true });
 
 if (!process.env.DATABASE) {
   throw new Error("DATABASE is not set in .env");
@@ -14,6 +14,7 @@ export default defineConfig({
     "users",
     "organizations",
     "memberships",
+    "organization_ingest_keys",
     "apis",
     "endpoints",
     "openapi_specs",

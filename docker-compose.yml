@@ -35,6 +35,7 @@ services:
     ports:
       - "8000:8000"
     environment:
+      <<: *kafka-tls-env
       APP_ENV: ${APP_ENV:-prod}
       ENVIRONMENT: ${ENVIRONMENT:-production}
       DEBUG: ${DEBUG:-false}
@@ -65,8 +66,19 @@ services:
       OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
       OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:8000}
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-}
+      KAFKA_TOPIC_ALERTS: ${KAFKA_TOPIC_ALERTS:-alerts}
+      KAFKA_ALERTS_GROUP_ID: ${KAFKA_ALERTS_GROUP_ID:-apicortex-alert-subscriber}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      ALERT_POLL_TIMEOUT_SECONDS: ${ALERT_POLL_TIMEOUT_SECONDS:-1.0}
+      INGEST_KEY_PEPPER: ${INGEST_KEY_PEPPER:-}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -84,6 +96,8 @@ services:
     environment:
       <<: *kafka-tls-env
       PORT: ${PORT:-8080}
+      DATABASE: ${DATABASE:-}
+      TIMESCALE_DATABASE: ${TIMESCALE_DATABASE:-}
       REQUIRE_API_KEY: ${REQUIRE_API_KEY:-false}
       INGEST_API_KEY: ${INGEST_API_KEY:-}
       RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-4000}
@@ -93,6 +107,8 @@ services:
       MAX_BUFFER_CAPACITY: ${MAX_BUFFER_CAPACITY:-50000}
       MAX_EVENTS_PER_REQUEST: ${MAX_EVENTS_PER_REQUEST:-1000}
       PUBLISH_WORKER_COUNT: ${PUBLISH_WORKER_COUNT:-4}
+      ORG_VALIDATION_TTL_SECONDS: ${ORG_VALIDATION_TTL_SECONDS:-60}
+      INGEST_KEY_PEPPER: ${INGEST_KEY_PEPPER:-}
 
   ml-service:
     <<: *runtime-defaults
@@ -116,7 +132,13 @@ services:
       KAFKA_SESSION_TIMEOUT_MS: ${KAFKA_SESSION_TIMEOUT_MS:-45000}
       SHAP_TOP_K: ${SHAP_TOP_K:-5}
     healthcheck:
-      test: ["CMD", "python", "-c", "from app.config import get_settings; s = get_settings(); assert s.model_path.exists(); assert 'security.protocol' in s.consumer_config; print('ok')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "from app.config import get_settings; s = get_settings(); assert s.model_path.exists(); assert 'security.protocol' in s.consumer_config; print('ok')",
+        ]
       interval: 45s
       timeout: 10s
       retries: 3
