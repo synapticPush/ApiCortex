@@ -286,7 +286,7 @@ export default function TestingPage() {
                   className="w-full h-full bg-transparent p-4 font-mono text-sm text-[#00C2A8] outline-none resize-none leading-relaxed placeholder:text-[#9AA3B2]/50"
                   placeholder="Enter request body here..."
                   spellCheck="false"
-                  defaultValue="{\n  &quot;limit&quot;: 100,\n  &quot;status&quot;: &quot;active&quot;\n}"
+                  defaultValue="{\n  \"limit\": 100,\n  \"status\": \"active\"\n}"
                 ></textarea>
               </TabsContent>
               
