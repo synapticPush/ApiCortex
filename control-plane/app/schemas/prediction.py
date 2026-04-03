@@ -1,7 +1,12 @@
 import uuid
 from datetime import datetime
-from typing import Any
 from pydantic import BaseModel, ConfigDict
+
+
+class PredictionFeatureOut(BaseModel):
+    name: str
+    value: float
+    contribution: float
 
 class PredictionRecordOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -12,4 +17,4 @@ class PredictionRecordOut(BaseModel):
     risk_score: float
     prediction: str
     confidence: float
-    top_features: list[dict[str, Any]]
+    top_features: list[PredictionFeatureOut]

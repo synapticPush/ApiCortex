@@ -1,9 +1,11 @@
 import json
 import logging
 import threading
+import time
 
 import httpx
 from confluent_kafka import Consumer, KafkaError
+from confluent_kafka.admin import AdminClient, NewTopic
 
 from app.core.config import Settings
 
@@ -15,6 +17,7 @@ class AlertSubscriber:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._consumer: Consumer | None = None
+        self._last_missing_topic_log_at = 0.0
 
     def start(self) -> None:
         if not self._settings.alert_subscriber_enabled:
@@ -37,10 +40,48 @@ class AlertSubscriber:
                 }
             )
 
+        self._ensure_topic(config)
+
         self._consumer = Consumer(config)
         self._consumer.subscribe([self._settings.kafka_topic_alerts])
         self._thread = threading.Thread(target=self._run, name="alert-subscriber", daemon=True)
         self._thread.start()
+
+    def _ensure_topic(self, config: dict[str, object]) -> None:
+        topic = self._settings.kafka_topic_alerts
+        admin_config: dict[str, object] = {
+            "bootstrap.servers": config["bootstrap.servers"],
+        }
+
+        if "security.protocol" in config:
+            admin_config["security.protocol"] = config["security.protocol"]
+        if "ssl.ca.pem" in config:
+            admin_config["ssl.ca.pem"] = config["ssl.ca.pem"]
+        if "ssl.certificate.pem" in config:
+            admin_config["ssl.certificate.pem"] = config["ssl.certificate.pem"]
+        if "ssl.key.pem" in config:
+            admin_config["ssl.key.pem"] = config["ssl.key.pem"]
+
+        admin = AdminClient(admin_config)
+
+        try:
+            metadata = admin.list_topics(timeout=10)
+            if topic in metadata.topics and metadata.topics[topic].error is None:
+                return
+        except Exception as exc:
+            self._logger.warning("Kafka metadata check failed for topic %s: %s", topic, exc)
+
+        futures = admin.create_topics([NewTopic(topic, num_partitions=1, replication_factor=1)])
+        future = futures.get(topic)
+        if future is None:
+            return
+
+        try:
+            future.result(10)
+            self._logger.info("Kafka topic ensured: %s", topic)
+        except Exception as exc:
+            if "TOPIC_ALREADY_EXISTS" not in str(exc):
+                self._logger.warning("Kafka topic ensure failed for %s: %s", topic, exc)
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -58,6 +99,16 @@ class AlertSubscriber:
                 continue
             if message.error():
                 if message.error().code() == KafkaError._PARTITION_EOF:
+                    continue
+                unknown_topic_code = getattr(KafkaError, "UNKNOWN_TOPIC_OR_PART", None)
+                if unknown_topic_code is not None and message.error().code() == unknown_topic_code:
+                    now = time.monotonic()
+                    if now-self._last_missing_topic_log_at >= 10:
+                        self._logger.warning(
+                            "Alert topic unavailable: %s. Waiting for topic to exist.",
+                            self._settings.kafka_topic_alerts,
+                        )
+                        self._last_missing_topic_log_at = now
                     continue
                 self._logger.error("Alert topic consume error: %s", message.error())
                 continue
