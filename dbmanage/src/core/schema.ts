@@ -97,13 +97,23 @@ export const endpoints = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     path: varchar("path", { length: 1024 }).notNull(),
     method: varchar("method", { length: 16 }).notNull(),
+    monitoringEnabled: boolean("monitoring_enabled").notNull().default(true),
+    pollIntervalSeconds: integer("poll_interval_seconds"),
+    timeoutMs: integer("timeout_ms"),
+    pollHeadersJson: jsonb("poll_headers_json"),
     createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
   (table) => ({
     apiIdx: index("ix_endpoints_api_id").on(table.apiId),
     orgIdx: index("ix_endpoints_org_id").on(table.orgId),
+    activeIdx: index("ix_endpoints_monitoring_enabled").on(
+      table.monitoringEnabled,
+    ),
     pathMethodUnique: unique("uq_endpoint_api_path_method").on(
       table.apiId,
       table.path,
