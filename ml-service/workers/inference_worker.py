@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import signal
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ from confluent_kafka import Message
 
 from app.config import Settings
 from app.explainability.shap_explainer import ShapExplainer
-from app.features.feature_engineering import RollingFeatureEngineer
+from app.features.feature_engineering import FEATURE_COLUMNS, RollingFeatureEngineer
 from app.inference.model_loader import load_model
 from app.inference.predictor import Predictor
 from app.kafka.consumer import KafkaBatchConsumer, RetryableKafkaError
@@ -40,7 +41,7 @@ def configure_logging(level: str) -> logging.Logger:
     logger = logging.getLogger("apicortex.ml-worker")
     logger.setLevel(level)
     logger.handlers.clear()
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler(stream=sys.stdout)
     handler.setFormatter(JsonFormatter())
     logger.addHandler(handler)
     logger.propagate = False
@@ -56,6 +57,7 @@ class WorkerMetrics:
     telemetry_written: int = 0
     telemetry_write_failures: int = 0
     predictions_written: int = 0
+    alerts_published: int = 0
     db_write_failures: int = 0
     alert_publish_failures: int = 0
     alert_delivery_errors: int = 0
@@ -142,7 +144,18 @@ class InferenceWorker:
         raise last_error or RuntimeError("Retry exhausted")
 
     async def run(self) -> None:
-        self.logger.info("ML inference worker started")
+        self.logger.info(
+            "ML inference worker started",
+            extra={
+                "extra": {
+                    "alert_threshold": self.settings.alert_threshold,
+                    "shap_min_risk": self.settings.shap_min_risk,
+                    "kafka_topic_raw": self.settings.kafka_topic_raw,
+                    "kafka_topic_alerts": self.settings.kafka_topic_alerts,
+                    "enable_shap": self.settings.enable_shap,
+                }
+            },
+        )
 
         while not self._shutdown.is_set():
             try:
@@ -270,9 +283,22 @@ class InferenceWorker:
         feature_rows = self.feature_engineer.ingest(filtered_events)
         prediction_records: list[PredictionRecord] = []
         alerts_to_publish: list[dict[str, Any]] = []
+        risk_scores: list[float] = []
+        warmed_up_rows = 0
+        cold_start_rows = 0
 
         for feature_row in feature_rows:
-            result = self.predictor.predict(feature_row.features)
+            if feature_row.is_warmed_up:
+                warmed_up_rows += 1
+            else:
+                cold_start_rows += 1
+
+            result = self.predictor.predict(
+                feature_row.features,
+                explain=feature_row.is_warmed_up,
+                explain_min_risk=self.settings.shap_min_risk,
+            )
+            risk_scores.append(result.risk_score)
             prediction_records.append(
                 PredictionRecord(
                     time=feature_row.time,
@@ -284,6 +310,7 @@ class InferenceWorker:
                     prediction=result.prediction,
                     confidence=result.confidence,
                     top_features=result.top_features,
+                    feature_values={name: float(feature_row.features.get(name, 0.0)) for name in FEATURE_COLUMNS},
                     model_hash=self._model_hash,
                     is_warmed_up=feature_row.is_warmed_up,
                 )
@@ -329,6 +356,7 @@ class InferenceWorker:
                 if delivery_errors:
                     reason = f"alert delivery confirmation failed: {delivery_errors[0]}"
                 raise RuntimeError(reason)
+            self.metrics.alerts_published += len(alerts_to_publish)
 
         await asyncio.to_thread(self.consumer.commit_message, message)
 
@@ -336,6 +364,10 @@ class InferenceWorker:
         self.metrics.batches_processed += 1
         self.metrics.events_processed += len(filtered_events)
         self.metrics.predictions_written += len(prediction_records)
+        risk_min = min(risk_scores) if risk_scores else 0.0
+        risk_max = max(risk_scores) if risk_scores else 0.0
+        risk_avg = (sum(risk_scores) / len(risk_scores)) if risk_scores else 0.0
+        above_threshold_count = sum(1 for score in risk_scores if score >= self.settings.alert_threshold)
 
         self.logger.info(
             "Processed telemetry batch",
@@ -345,6 +377,13 @@ class InferenceWorker:
                     "telemetry_written": len(filtered_events),
                     "predictions_written": len(prediction_records),
                     "alerts_published": len(alerts_to_publish),
+                    "alert_threshold": self.settings.alert_threshold,
+                    "risk_score_min": round(risk_min, 6),
+                    "risk_score_max": round(risk_max, 6),
+                    "risk_score_avg": round(risk_avg, 6),
+                    "above_threshold_count": above_threshold_count,
+                    "warmed_up_predictions": warmed_up_rows,
+                    "cold_start_predictions": cold_start_rows,
                     "invalid_events": len(decode_result.invalid_payloads),
                     "payload_corruption": decode_result.payload_corruption_count,
                     "prediction_latency_ms": duration_ms,
@@ -353,6 +392,7 @@ class InferenceWorker:
                         "batches": self.metrics.batches_processed,
                         "events": self.metrics.events_processed,
                         "predictions": self.metrics.predictions_written,
+                        "alerts_published": self.metrics.alerts_published,
                         "inference_errors": self.metrics.inference_errors,
                         "invalid_events": self.metrics.invalid_events,
                         "dlq_messages": self.metrics.dlq_messages,
