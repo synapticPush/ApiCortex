@@ -1,7 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
 import { DashboardMetrics } from "@/lib/api-types";
+import { useQuery } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -16,45 +18,129 @@ import {
   AlertTriangle,
   BarChart3,
   Database,
+  ArrowUpRight,
+  CircleDot,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 export default function DashboardPage() {
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [apiCount, setApiCount] = useState<number>(0);
-  const [endpointCount, setEndpointCount] = useState<number>(0);
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-  const fetchDashboardData = async () => {
-    try {
+  const metricsQuery = useQuery({
+    queryKey: ["dashboard-summary", 24],
+    queryFn: async () => {
       const response = await apiClient.get<DashboardMetrics>(
         "/dashboard/summary?window_hours=24",
       );
-      setMetrics(response.data);
-      const apisResponse = await apiClient.get("/apis");
-      const apis = apisResponse.data;
-      setApiCount(apis.length);
+      return response.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const apisQuery = useQuery({
+    queryKey: ["apis-list"],
+    queryFn: async () => {
+      const response = await apiClient.get<Array<{ id: string }>>("/apis");
+      return response.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const endpointCountQuery = useQuery({
+    queryKey: [
+      "apis-endpoint-count",
+      (apisQuery.data ?? []).map((api) => api.id).join(","),
+    ],
+    queryFn: async () => {
+      const apis = apisQuery.data ?? [];
       const endpointCounts = await Promise.all(
-        apis.map(async (api: { id: string }) => {
+        apis.map(async (api) => {
           try {
-            const endpointsRes = await apiClient.get(
+            const endpointsRes = await apiClient.get<Array<unknown>>(
               `/apis/${api.id}/endpoints`,
             );
             return endpointsRes.data.length;
-          } catch (e) {
-            console.error(e);
+          } catch {
             return 0;
           }
         }),
       );
-      setEndpointCount(endpointCounts.reduce((sum, count) => sum + count, 0));
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
+      return endpointCounts.reduce((sum, count) => sum + count, 0);
+    },
+    enabled: !!apisQuery.data,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const metrics = metricsQuery.data ?? null;
+  const apiCount = apisQuery.data?.length ?? 0;
+  const endpointCount = endpointCountQuery.data ?? 0;
+  const loading =
+    metricsQuery.isLoading ||
+    apisQuery.isLoading ||
+    endpointCountQuery.isLoading;
+
+  const latencyText = useMemo(() => {
+    if (typeof metrics?.p95_latency_ms !== "number") {
+      return "0.0 ms";
     }
-  };
+    return `${metrics.p95_latency_ms.toFixed(1)} ms`;
+  }, [metrics]);
+
+  const requestCountText = useMemo(() => {
+    if (typeof metrics?.request_count !== "number") {
+      return "0";
+    }
+    return metrics.request_count.toLocaleString();
+  }, [metrics]);
+
+  const liveStatus = useMemo(() => {
+    const errorRate = (metrics?.error_rate ?? 0) * 100;
+    const latency = metrics?.p95_latency_ms ?? 0;
+    if (errorRate > 4 || latency > 700) {
+      return {
+        label: "Degraded",
+        tone: "text-[#FF5C5C] border-[#FF5C5C]/25 bg-[#FF5C5C]/10",
+      };
+    }
+    if (errorRate > 2 || latency > 450) {
+      return {
+        label: "Warning",
+        tone: "text-[#F5B74F] border-[#F5B74F]/25 bg-[#F5B74F]/10",
+      };
+    }
+    return {
+      label: "Healthy",
+      tone: "text-[#00C2A8] border-[#00C2A8]/25 bg-[#00C2A8]/10",
+    };
+  }, [metrics]);
+
+  const modules = [
+    {
+      name: "ML Predictions",
+      description:
+        "Run risk forecasting and review top contributing features per endpoint.",
+      href: "/predictions",
+      icon: FlaskConical,
+      tone: "bg-[#5B5DFF]/20 text-[#5B5DFF] border-[#5B5DFF]/30",
+      halo: "from-[#5B5DFF]/10",
+    },
+    {
+      name: "API Telemetry",
+      description:
+        "Inspect traffic, latency profiles, and error-rate behavior live.",
+      href: "/telemetry",
+      icon: BarChart3,
+      tone: "bg-[#00C2A8]/20 text-[#00C2A8] border-[#00C2A8]/30",
+      halo: "from-[#00C2A8]/10",
+    },
+    {
+      name: "Smart Alerts",
+      description:
+        "Manage notification policy and team response workflow in settings.",
+      href: "/settings",
+      icon: AlertTriangle,
+      tone: "bg-[#F5B74F]/20 text-[#F5B74F] border-[#F5B74F]/30",
+      halo: "from-[#F5B74F]/10",
+    },
+  ];
+
   if (loading) {
     return (
       <div className="w-full space-y-8 animate-in fade-in duration-300">
@@ -134,7 +220,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-[#E6EAF2]">
-              {metrics?.p95_latency_ms.toFixed(1)} ms
+              {latencyText}
             </div>
           </CardContent>
         </Card>
@@ -164,70 +250,91 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-[#E6EAF2]">
-              {metrics?.request_count.toLocaleString()}
+              {requestCountText}
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-[#141824] border-[#242938]">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wider text-[#9AA3B2]">
+                Platform Health
+              </p>
+              <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold ${liveStatus.tone}`}
+              >
+                <CircleDot className="w-3 h-3" />
+                {liveStatus.label}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-[#141824] border-[#242938]">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wider text-[#9AA3B2]">
+                Endpoints / API
+              </p>
+              <p className="text-xl font-bold text-[#E6EAF2]">
+                {(endpointCount / Math.max(apiCount, 1)).toFixed(1)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-[#141824] border-[#242938]">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wider text-[#9AA3B2]">
+                Signal Window
+              </p>
+              <p className="text-xl font-bold text-[#E6EAF2]">Last 24h</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div>
         <h2 className="text-xl font-bold text-[#E6EAF2] mb-4 tracking-tight">
-          Upcoming Features
+          Live Modules
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-gradient-to-b from-[#161A23] to-[#0F1117] border-[#242938] overflow-hidden relative group">
-            <div className="absolute inset-0 bg-gradient-to-tr from-[#5B5DFF]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <CardHeader>
-              <FlaskConical className="w-8 h-8 text-[#5B5DFF] mb-2" />
-              <CardTitle className="text-lg text-[#E6EAF2]">
-                ML Predictions
-              </CardTitle>
-              <CardDescription className="text-[#9AA3B2]">
-                Predict API failures before they happen using our advanced
-                machine learning engine.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="inline-block px-3 py-1 rounded-full bg-[#5B5DFF]/20 text-[#5B5DFF] text-xs font-semibold uppercase tracking-wider border border-[#5B5DFF]/30">
-                Coming Soon
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-b from-[#161A23] to-[#0F1117] border-[#242938] overflow-hidden relative group">
-            <div className="absolute inset-0 bg-gradient-to-tr from-[#00C2A8]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <CardHeader>
-              <BarChart3 className="w-8 h-8 text-[#00C2A8] mb-2" />
-              <CardTitle className="text-lg text-[#E6EAF2]">
-                API Telemetry
-              </CardTitle>
-              <CardDescription className="text-[#9AA3B2]">
-                Deep visibility into endpoint latency, error rates, and traffic
-                patterns.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="inline-block px-3 py-1 rounded-full bg-[#00C2A8]/20 text-[#00C2A8] text-xs font-semibold uppercase tracking-wider border border-[#00C2A8]/30">
-                Coming Soon
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-b from-[#161A23] to-[#0F1117] border-[#242938] overflow-hidden relative group">
-            <div className="absolute inset-0 bg-gradient-to-tr from-[#F5B74F]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <CardHeader>
-              <AlertTriangle className="w-8 h-8 text-[#F5B74F] mb-2" />
-              <CardTitle className="text-lg text-[#E6EAF2]">
-                Smart Alerts
-              </CardTitle>
-              <CardDescription className="text-[#9AA3B2]">
-                Get notified about contract drifts and latency degradation over
-                Slack and PagerDuty.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="inline-block px-3 py-1 rounded-full bg-[#F5B74F]/20 text-[#F5B74F] text-xs font-semibold uppercase tracking-wider border border-[#F5B74F]/30">
-                Coming Soon
-              </div>
-            </CardContent>
-          </Card>
+          {modules.map((module) => (
+            <Card
+              key={module.name}
+              className="bg-gradient-to-b from-[#161A23] to-[#0F1117] border-[#242938] overflow-hidden relative group"
+            >
+              <div
+                className={`absolute inset-0 bg-gradient-to-tr ${module.halo} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
+              />
+              <CardHeader>
+                <module.icon className="w-8 h-8 mb-2" />
+                <CardTitle className="text-lg text-[#E6EAF2]">
+                  {module.name}
+                </CardTitle>
+                <CardDescription className="text-[#9AA3B2]">
+                  {module.description}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex items-center justify-between gap-3">
+                <div
+                  className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider border ${module.tone}`}
+                >
+                  Live
+                </div>
+                <Link
+                  href={module.href}
+                  prefetch
+                  className="inline-flex items-center gap-1 text-sm text-[#E6EAF2] hover:text-white transition-colors"
+                >
+                  Open
+                  <ArrowUpRight className="w-4 h-4" />
+                </Link>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     </div>

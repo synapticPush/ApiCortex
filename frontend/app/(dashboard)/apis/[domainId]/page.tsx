@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Table,
@@ -48,43 +48,42 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api-client";
 import { API, Endpoint } from "@/lib/api-types";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 export default function DomainDetailsPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const params = useParams();
   const domainId = params.domainId as string;
   const [searchQuery, setSearchQuery] = useState("");
-  const [domain, setDomain] = useState<API | null>(null);
-  const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isEndpointModalOpen, setIsEndpointModalOpen] = useState(false);
   const [endpointFormPath, setEndpointFormPath] = useState("");
   const [endpointFormMethod, setEndpointFormMethod] = useState<string>("GET");
   const [editingEndpointId, setEditingEndpointId] = useState<string | null>(
     null,
   );
-  const fetchDomainData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const apiRes = await apiClient.get<API[]>(`/apis`);
-      const apiDetails = apiRes.data.find((a) => a.id === domainId);
-      if (apiDetails) {
-        setDomain(apiDetails);
-        const endpointsRes = await apiClient.get<Endpoint[]>(
-          `/apis/${domainId}/endpoints`,
-        );
-        setEndpoints(endpointsRes.data);
-      } else {
-        setDomain(null);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  }, [domainId]);
-  useEffect(() => {
-    void fetchDomainData();
-  }, [fetchDomainData]);
+  const domainQuery = useQuery({
+    queryKey: ["api-domain", domainId],
+    queryFn: async () => {
+      const apiRes = await apiClient.get<API[]>("/apis");
+      return apiRes.data.find((a) => a.id === domainId) ?? null;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const endpointsQuery = useQuery({
+    queryKey: ["api-domain-endpoints", domainId],
+    queryFn: async () => {
+      const endpointsRes = await apiClient.get<Endpoint[]>(
+        `/apis/${domainId}/endpoints`,
+      );
+      return endpointsRes.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const domain = domainQuery.data ?? null;
+  const endpoints = endpointsQuery.data ?? [];
+  const loading = domainQuery.isLoading || endpointsQuery.isLoading;
   if (loading) {
     return (
       <div className="w-full space-y-6 animate-in fade-in duration-300">
@@ -173,7 +172,9 @@ export default function DomainDetailsPage() {
           method: endpointFormMethod,
         });
       }
-      await fetchDomainData();
+      await queryClient.invalidateQueries({
+        queryKey: ["api-domain-endpoints", domainId],
+      });
       setIsEndpointModalOpen(false);
     } catch (error) {
       console.error(error);
@@ -182,7 +183,9 @@ export default function DomainDetailsPage() {
   const handleDeleteEndpoint = async (endpointId: string) => {
     try {
       await apiClient.delete(`/endpoints/${endpointId}`);
-      await fetchDomainData();
+      await queryClient.invalidateQueries({
+        queryKey: ["api-domain-endpoints", domainId],
+      });
     } catch (error) {
       console.error(error);
     }

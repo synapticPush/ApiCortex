@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   FlaskConical,
   AlertTriangle,
@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useQuery } from "@tanstack/react-query";
 
 interface PredictionFeature {
   name: string;
@@ -59,30 +60,28 @@ interface PredictionGroup {
 type RiskFilter = "all" | "critical" | "warning" | "stable";
 
 export default function PredictionsPage() {
-  const [data, setData] = useState<PredictionRecordOut[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
-
-  useEffect(() => {
-    fetchPredictions();
-  }, []);
-
-  const fetchPredictions = async () => {
-    try {
-      setLoading(true);
+  const [now] = useState(() => Date.now());
+  const predictionsQuery = useQuery({
+    queryKey: ["predictions"],
+    queryFn: async () => {
       const response =
         await apiClient.get<PredictionRecordOut[]>("/predictions");
-      setData(response.data);
-      setError(null);
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load prediction data.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+      return response.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const data = useMemo(
+    () => predictionsQuery.data ?? [],
+    [predictionsQuery.data],
+  );
+  const loading = predictionsQuery.isLoading;
+  const error = predictionsQuery.error
+    ? predictionsQuery.error instanceof Error
+      ? predictionsQuery.error.message
+      : "Failed to load prediction data."
+    : null;
 
   const getTimestamp = (isoString: string) => {
     const timestamp = new Date(isoString).getTime();
@@ -91,7 +90,7 @@ export default function PredictionsPage() {
 
   const getRelativeTime = (isoString: string) => {
     const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-    const diff = getTimestamp(isoString) - Date.now();
+    const diff = getTimestamp(isoString) - now;
     const absDiff = Math.abs(diff);
     if (absDiff < 1000 * 60 * 60) {
       return rtf.format(Math.round(diff / (1000 * 60)), "minute");

@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import {
   BarChart3,
   FlaskConical,
@@ -28,6 +29,14 @@ interface SidebarProps {
 }
 export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    for (const item of navItems) {
+      router.prefetch(item.href);
+    }
+  }, [router]);
+
   return (
     <div
       className={cn(
@@ -73,6 +82,9 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch
+                scroll={false}
+                onMouseEnter={() => router.prefetch(item.href)}
                 title={isCollapsed ? item.name : undefined}
                 className={cn(
                   "flex items-center gap-3 py-2.5 rounded-xl transition-all duration-200 group text-sm font-medium relative",

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Table,
@@ -42,12 +42,12 @@ import {
 import { apiClient } from "@/lib/api-client";
 import { API, Endpoint, OpenAPIUploadResult } from "@/lib/api-types";
 import { toast } from "sonner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 type APIDomain = API & { endpointsCount: number; status: string };
 export default function ApisPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [domains, setDomains] = useState<APIDomain[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isDomainModalOpen, setIsDomainModalOpen] = useState(false);
   const [isOpenApiModalOpen, setIsOpenApiModalOpen] = useState(false);
   const [openApiVersion, setOpenApiVersion] = useState("1.0.0");
@@ -59,12 +59,10 @@ export default function ApisPage() {
   const [domainFormUrl, setDomainFormUrl] = useState("");
   const [domainFormName, setDomainFormName] = useState("");
   const [editingDomainId, setEditingDomainId] = useState<string | null>(null);
-  useEffect(() => {
-    fetchApis();
-  }, []);
-  const fetchApis = async () => {
-    try {
-      setLoading(true);
+
+  const domainsQuery = useQuery({
+    queryKey: ["apis-domains"],
+    queryFn: async () => {
       const res = await apiClient.get<API[]>("/apis");
       const apisData = res.data;
       const enrichedApis = await Promise.all(
@@ -75,23 +73,23 @@ export default function ApisPage() {
               `/apis/${api.id}/endpoints`,
             );
             count = endpointsRes.data.length;
-          } catch (e) {
-            console.error(e);
+          } catch {
+            count = 0;
           }
           return {
             ...api,
             endpointsCount: count,
             status: "healthy",
-          };
+          } satisfies APIDomain;
         }),
       );
-      setDomains(enrichedApis);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      return enrichedApis;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const domains = domainsQuery.data ?? [];
+  const loading = domainsQuery.isLoading;
   const filteredDomains = domains.filter(
     (d) =>
       d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -132,7 +130,7 @@ export default function ApisPage() {
           base_url: domainFormUrl,
         });
       }
-      await fetchApis();
+      await queryClient.invalidateQueries({ queryKey: ["apis-domains"] });
       setIsDomainModalOpen(false);
     } catch (error) {
       console.error(error);
@@ -142,7 +140,7 @@ export default function ApisPage() {
     e.stopPropagation();
     try {
       await apiClient.delete(`/apis/${id}`);
-      await fetchApis();
+      await queryClient.invalidateQueries({ queryKey: ["apis-domains"] });
     } catch (error) {
       console.error(error);
     }
@@ -189,7 +187,7 @@ export default function ApisPage() {
         `OpenAPI imported. ${response.data.endpoints_synced} endpoints synced.`,
       );
       setIsOpenApiModalOpen(false);
-      await fetchApis();
+      await queryClient.invalidateQueries({ queryKey: ["apis-domains"] });
     } catch {
       toast.error("Failed to import OpenAPI document.");
     } finally {

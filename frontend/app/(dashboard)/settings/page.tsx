@@ -28,6 +28,7 @@ import type {
   Membership,
   Organization,
 } from "@/lib/api-types";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 type Profile = {
   id: string;
@@ -38,7 +39,7 @@ type Profile = {
 };
 
 export default function SettingsPage() {
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingOrg, setSavingOrg] = useState(false);
   const [inviting, setInviting] = useState(false);
@@ -59,9 +60,9 @@ export default function SettingsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<Membership["role"]>("member");
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
+  const settingsQuery = useQuery({
+    queryKey: ["settings-data"],
+    queryFn: async () => {
       const [profileRes, orgRes] = await Promise.all([
         apiClient.get<Profile>("/auth/profile"),
         apiClient.get<Organization>("/orgs/current"),
@@ -70,24 +71,30 @@ export default function SettingsPage() {
         apiClient.get<Membership[]>(`/orgs/${orgRes.data.id}/members`),
         apiClient.get<IngestKeyStatus>(`/orgs/${orgRes.data.id}/ingest-key`),
       ]);
+      return {
+        profile: profileRes.data,
+        org: orgRes.data,
+        members: membersRes.data,
+        ingestKeyStatus: ingestKeyRes.data,
+      };
+    },
+    staleTime: 2 * 60 * 1000,
+  });
 
-      setProfile(profileRes.data);
-      setOrg(orgRes.data);
-      setMembers(membersRes.data);
-      setIngestKeyStatus(ingestKeyRes.data);
-      setProfileName(profileRes.data.name);
-      setOrgName(orgRes.data.name);
-      setOrgPlan(orgRes.data.plan);
-    } catch {
-      toast.error("Failed to load settings.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loading = settingsQuery.isLoading;
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!settingsQuery.data) {
+      return;
+    }
+    setProfile(settingsQuery.data.profile);
+    setOrg(settingsQuery.data.org);
+    setMembers(settingsQuery.data.members);
+    setIngestKeyStatus(settingsQuery.data.ingestKeyStatus);
+    setProfileName(settingsQuery.data.profile.name);
+    setOrgName(settingsQuery.data.org.name);
+    setOrgPlan(settingsQuery.data.org.plan);
+  }, [settingsQuery.data]);
 
   const saveProfile = async () => {
     if (!profileName.trim()) {
@@ -149,7 +156,7 @@ export default function SettingsPage() {
       setInviteName("");
       setInviteEmail("");
       setInviteRole("member");
-      await loadData();
+      await queryClient.invalidateQueries({ queryKey: ["settings-data"] });
       toast.success("Member invitation applied.");
     } catch {
       toast.error("Failed to invite member.");

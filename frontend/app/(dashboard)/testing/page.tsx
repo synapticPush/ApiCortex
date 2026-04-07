@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 import { API, ContractValidation, Endpoint } from "@/lib/api-types";
+import { useQuery } from "@tanstack/react-query";
 
 type TestResponseState = {
   status: number;
@@ -44,9 +45,6 @@ export default function TestingPage() {
   const [response, setResponse] = useState<TestResponseState | null>(null);
   const [activeEndpoint, setActiveEndpoint] = useState<Endpoint | null>(null);
 
-  const [domains, setDomains] = useState<(API & { endpoints?: Endpoint[] })[]>(
-    [],
-  );
   const [expandedCollections, setExpandedCollections] = useState<
     Record<string, boolean>
   >({});
@@ -54,16 +52,11 @@ export default function TestingPage() {
     '{\n  "limit": 100,\n  "status": "active"\n}',
   );
 
-  useEffect(() => {
-    fetchApiData();
-  }, []);
-
-  const fetchApiData = async () => {
-    try {
+  const domainsQuery = useQuery({
+    queryKey: ["testing-domains"],
+    queryFn: async () => {
       const apiRes = await apiClient.get<API[]>("/apis");
       const initialDomains: (API & { endpoints?: Endpoint[] })[] = [];
-      const expanded: Record<string, boolean> = {};
-
       for (const api of apiRes.data) {
         try {
           const eps = await apiClient.get<Endpoint[]>(
@@ -73,18 +66,30 @@ export default function TestingPage() {
         } catch {
           initialDomains.push({ ...api, endpoints: [] });
         }
-        expanded[api.id] = false;
       }
+      return initialDomains;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
 
-      setDomains(initialDomains);
-      if (initialDomains.length > 0) {
-        expanded[initialDomains[0].id] = true;
-      }
-      setExpandedCollections(expanded);
-    } catch (error) {
-      console.error(error);
+  const domains = useMemo(() => domainsQuery.data ?? [], [domainsQuery.data]);
+  const loadingCollections = domainsQuery.isLoading;
+
+  const defaultExpandedCollections = useMemo(() => {
+    const expanded: Record<string, boolean> = {};
+    for (const domain of domains) {
+      expanded[domain.id] = false;
     }
-  };
+    if (domains.length > 0) {
+      expanded[domains[0].id] = true;
+    }
+    return expanded;
+  }, [domains]);
+
+  const effectiveExpandedCollections =
+    Object.keys(expandedCollections).length > 0
+      ? expandedCollections
+      : defaultExpandedCollections;
 
   const toggleCollection = (id: string) => {
     setExpandedCollections((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -207,40 +212,47 @@ export default function TestingPage() {
               </Button>
             </div>
             <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-1">
-              {domains.map((domain) => (
-                <div key={domain.id} className="group">
-                  <div
-                    onClick={() => toggleCollection(domain.id)}
-                    className="flex items-center gap-2 text-[#E6EAF2] text-sm font-medium p-2 hover:bg-[#161A23] rounded-lg cursor-pointer transition-colors"
-                  >
-                    {expandedCollections[domain.id] ? (
-                      <ChevronDown className="w-4 h-4 shrink-0 text-[#9AA3B2]" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 shrink-0 text-[#9AA3B2]" />
-                    )}
-                    <FolderTree className="w-4 h-4 shrink-0 text-[#3A8DFF]" />
-                    <span className="truncate">{domain.name}</span>
-                  </div>
-                  {expandedCollections[domain.id] && domain.endpoints && (
-                    <div className="pl-6 mt-1 space-y-1 mb-2">
-                      {domain.endpoints.map((ep) => (
-                        <div
-                          key={ep.id}
-                          onClick={() => selectEndpoint(domain, ep)}
-                          className={`flex items-center gap-2 text-xs p-1.5 rounded-md cursor-pointer transition-colors ${activeEndpoint?.id === ep.id ? "bg-[#242938] text-[#E6EAF2]" : "text-[#9AA3B2] hover:text-[#E6EAF2] hover:bg-[#161A23]"}`}
-                        >
-                          <span
-                            className={`font-bold w-10 shrink-0 text-right text-[10px] ${getMethodColor(ep.method)}`}
-                          >
-                            {ep.method}
-                          </span>
-                          <span className="truncate">{ep.path}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+              {loadingCollections ? (
+                <div className="text-xs text-[#9AA3B2] px-2 py-1">
+                  Loading collections...
                 </div>
-              ))}
+              ) : (
+                domains.map((domain) => (
+                  <div key={domain.id} className="group">
+                    <div
+                      onClick={() => toggleCollection(domain.id)}
+                      className="flex items-center gap-2 text-[#E6EAF2] text-sm font-medium p-2 hover:bg-[#161A23] rounded-lg cursor-pointer transition-colors"
+                    >
+                      {effectiveExpandedCollections[domain.id] ? (
+                        <ChevronDown className="w-4 h-4 shrink-0 text-[#9AA3B2]" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 shrink-0 text-[#9AA3B2]" />
+                      )}
+                      <FolderTree className="w-4 h-4 shrink-0 text-[#3A8DFF]" />
+                      <span className="truncate">{domain.name}</span>
+                    </div>
+                    {effectiveExpandedCollections[domain.id] &&
+                      domain.endpoints && (
+                        <div className="pl-6 mt-1 space-y-1 mb-2">
+                          {domain.endpoints.map((ep) => (
+                            <div
+                              key={ep.id}
+                              onClick={() => selectEndpoint(domain, ep)}
+                              className={`flex items-center gap-2 text-xs p-1.5 rounded-md cursor-pointer transition-colors ${activeEndpoint?.id === ep.id ? "bg-[#242938] text-[#E6EAF2]" : "text-[#9AA3B2] hover:text-[#E6EAF2] hover:bg-[#161A23]"}`}
+                            >
+                              <span
+                                className={`font-bold w-10 shrink-0 text-right text-[10px] ${getMethodColor(ep.method)}`}
+                              >
+                                {ep.method}
+                              </span>
+                              <span className="truncate">{ep.path}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

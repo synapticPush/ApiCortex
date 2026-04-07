@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { BarChart3, Clock, AlertTriangle, Activity } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useQuery } from "@tanstack/react-query";
 
 interface TelemetryEndpointStatsOut {
   endpoint: string;
@@ -24,30 +24,24 @@ interface TelemetryEndpointStatsOut {
 }
 
 export default function TelemetryPage() {
-  const [data, setData] = useState<TelemetryEndpointStatsOut[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchTelemetry();
-  }, []);
-
-  const fetchTelemetry = async () => {
-    try {
-      setLoading(true);
+  const telemetryQuery = useQuery({
+    queryKey: ["telemetry-endpoints"],
+    queryFn: async () => {
       const response = await apiClient.get<TelemetryEndpointStatsOut[]>(
         "/telemetry/endpoints",
       );
-      setData(response.data);
-      setError(null);
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load telemetry data.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+      return response.data;
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const data = telemetryQuery.data ?? [];
+  const loading = telemetryQuery.isLoading;
+  const error = telemetryQuery.error
+    ? telemetryQuery.error instanceof Error
+      ? telemetryQuery.error.message
+      : "Failed to load telemetry data."
+    : null;
 
   const getMethodColor = (method: string) => {
     switch (method) {

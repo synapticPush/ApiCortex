@@ -32,9 +32,10 @@ import type {
   Organization,
   User as AppUser,
 } from "@/lib/api-types";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export default function ProfilePage() {
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -43,36 +44,34 @@ export default function ProfilePage() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [profileName, setProfileName] = useState("");
 
-  const loadData = async (isRefresh: boolean) => {
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-    try {
+  const identityQuery = useQuery({
+    queryKey: ["profile-identity"],
+    queryFn: async () => {
       const [profileRes, organizationRes, sessionRes] = await Promise.all([
         apiClient.get<AppUser>("/auth/profile"),
         apiClient.get<Organization>("/orgs/current"),
         apiClient.get<AuthSession>("/auth/me"),
       ]);
-      setProfile(profileRes.data);
-      setOrganization(organizationRes.data);
-      setSession(sessionRes.data);
-      setProfileName(profileRes.data.name || "");
-    } catch {
-      toast.error("Failed to load profile details.");
-    } finally {
-      if (isRefresh) {
-        setRefreshing(false);
-      } else {
-        setLoading(false);
-      }
-    }
-  };
+      return {
+        profile: profileRes.data,
+        organization: organizationRes.data,
+        session: sessionRes.data,
+      };
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const loading = identityQuery.isLoading;
 
   useEffect(() => {
-    void loadData(false);
-  }, []);
+    if (!identityQuery.data) {
+      return;
+    }
+    setProfile(identityQuery.data.profile);
+    setOrganization(identityQuery.data.organization);
+    setSession(identityQuery.data.session);
+    setProfileName(identityQuery.data.profile.name || "");
+  }, [identityQuery.data]);
 
   const saveProfile = async () => {
     if (!profileName.trim()) {
@@ -217,7 +216,16 @@ export default function ProfilePage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => void loadData(true)}
+                onClick={async () => {
+                  setRefreshing(true);
+                  try {
+                    await queryClient.invalidateQueries({
+                      queryKey: ["profile-identity"],
+                    });
+                  } finally {
+                    setRefreshing(false);
+                  }
+                }}
                 disabled={refreshing}
                 className="border-[#242938] text-[#E6EAF2] hover:bg-[#242938]"
               >

@@ -164,13 +164,13 @@ export function Topbar() {
               </div>
               <DropdownMenuSeparator className="bg-[#242938]" />
               <DropdownMenuGroup>
-                <Link href="/profile">
+                <Link href="/profile" prefetch>
                   <DropdownMenuItem className="cursor-pointer focus:bg-[#242938] focus:text-white group">
                     <User className="mr-2 h-4 w-4 text-[#9AA3B2] group-hover:text-white" />
                     <span>Profile</span>
                   </DropdownMenuItem>
                 </Link>
-                <Link href="/settings">
+                <Link href="/settings" prefetch>
                   <DropdownMenuItem className="cursor-pointer focus:bg-[#242938] focus:text-white group">
                     <Settings className="mr-2 h-4 w-4 text-[#9AA3B2] group-hover:text-white" />
                     <span>Settings</span>
