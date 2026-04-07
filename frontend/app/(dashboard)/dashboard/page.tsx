@@ -17,6 +17,7 @@ import {
   BarChart3,
   Database,
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,16 +35,20 @@ export default function DashboardPage() {
       const apisResponse = await apiClient.get("/apis");
       const apis = apisResponse.data;
       setApiCount(apis.length);
-      let totalEndpoints = 0;
-      for (const api of apis) {
-        try {
-          const endpointsRes = await apiClient.get(`/apis/${api.id}/endpoints`);
-          totalEndpoints += endpointsRes.data.length;
-        } catch (e) {
-          console.error(e);
-        }
-      }
-      setEndpointCount(totalEndpoints);
+      const endpointCounts = await Promise.all(
+        apis.map(async (api: { id: string }) => {
+          try {
+            const endpointsRes = await apiClient.get(
+              `/apis/${api.id}/endpoints`,
+            );
+            return endpointsRes.data.length;
+          } catch (e) {
+            console.error(e);
+            return 0;
+          }
+        }),
+      );
+      setEndpointCount(endpointCounts.reduce((sum, count) => sum + count, 0));
     } catch (error) {
       console.error(error);
     } finally {
@@ -51,7 +56,33 @@ export default function DashboardPage() {
     }
   };
   if (loading) {
-    return <div className="text-[#E6EAF2]">Loading...</div>;
+    return (
+      <div className="w-full space-y-8 animate-in fade-in duration-300">
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-56 bg-[#242938]" />
+          <Skeleton className="h-4 w-80 bg-[#161A23]" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton
+              key={index}
+              className="h-28 w-full rounded-xl bg-[#161A23] border border-[#242938]"
+            />
+          ))}
+        </div>
+        <div className="space-y-4 pt-4">
+          <Skeleton className="h-8 w-52 bg-[#242938]" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Skeleton
+                key={index}
+                className="h-56 w-full rounded-xl bg-[#161A23] border border-[#242938]"
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
   return (
     <div className="w-full space-y-8">

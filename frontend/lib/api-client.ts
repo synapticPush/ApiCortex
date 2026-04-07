@@ -1,7 +1,35 @@
 import axios from "axios";
 import { toast } from "sonner";
 
-const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const tunnelBaseURL =
+  process.env.NEXT_PUBLIC_TUNNEL_API_URL ||
+  "https://apicortex-cp.0xarchit.is-a.dev";
+
+const isLocalHost = (hostname: string) => {
+  const normalized = hostname.trim().toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1"
+  );
+};
+
+const resolveBaseURL = () => {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host && !isLocalHost(host)) {
+      return tunnelBaseURL;
+    }
+  }
+
+  const configured = (process.env.NEXT_PUBLIC_API_URL || "").trim();
+  if (configured) {
+    return configured;
+  }
+  return "http://localhost:8000";
+};
+
+const baseURL = resolveBaseURL();
 export const apiClient = axios.create({
   baseURL,
   headers: {
@@ -11,6 +39,11 @@ export const apiClient = axios.create({
 });
 
 let refreshPromise: Promise<void> | null = null;
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const clearAuthCookies = () => {
   document.cookie =
@@ -39,6 +72,25 @@ const refreshAuth = async () => {
       });
   }
   await refreshPromise;
+};
+
+const refreshAuthWithRetry = async () => {
+  const delays = [0, 200, 600];
+  let lastError: unknown;
+
+  for (const delay of delays) {
+    if (delay > 0) {
+      await wait(delay);
+    }
+    try {
+      await refreshAuth();
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
 };
 
 apiClient.interceptors.request.use((config) => {
@@ -71,7 +123,7 @@ apiClient.interceptors.response.use(
         if (!isRefreshCall && !originalRequest?._retry) {
           originalRequest._retry = true;
           try {
-            await refreshAuth();
+            await refreshAuthWithRetry();
             return apiClient(originalRequest);
           } catch {
             clearAuthCookies();

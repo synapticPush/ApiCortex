@@ -84,7 +84,7 @@ export default function LandingPage() {
         </div>
       </nav>
       <main className="relative z-10">
-        <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6">
+        <section className="relative min-h-[calc(100vh-4rem)] flex items-center py-14 lg:py-20 px-6">
           <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
             <motion.div
               initial={{ opacity: 0, y: 20 }}

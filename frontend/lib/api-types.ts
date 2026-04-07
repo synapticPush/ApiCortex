@@ -65,7 +65,11 @@ export interface Prediction {
   risk_score: number;
   prediction: string;
   confidence: number;
-  top_features: Array<{ feature: string; contribution: number }>;
+  top_features: Array<{
+    name: string;
+    value: number;
+    contribution: number;
+  }>;
 }
 
 export interface Membership {

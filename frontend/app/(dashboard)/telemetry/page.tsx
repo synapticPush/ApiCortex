@@ -1,13 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  BarChart3,
-  Clock,
-  AlertTriangle,
-  Activity,
-  Loader2,
-} from "lucide-react";
+import { BarChart3, Clock, AlertTriangle, Activity } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -19,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface TelemetryEndpointStatsOut {
   endpoint: string;
@@ -73,8 +68,28 @@ export default function TelemetryPage() {
 
   if (loading) {
     return (
-      <div className="h-[calc(100vh-8rem)] w-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-[#00C2A8] animate-spin" />
+      <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-56 bg-[#242938]" />
+          <Skeleton className="h-4 w-96 bg-[#161A23]" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton
+              key={index}
+              className="h-32 w-full rounded-xl bg-[#161A23] border border-[#242938]"
+            />
+          ))}
+        </div>
+        <div className="bg-[#161A23]/50 border border-[#242938] rounded-xl p-4 space-y-3">
+          <Skeleton className="h-6 w-52 bg-[#242938]" />
+          {Array.from({ length: 8 }).map((_, index) => (
+            <Skeleton
+              key={index}
+              className="h-11 w-full bg-[#0F1117] border border-[#242938] rounded-lg"
+            />
+          ))}
+        </div>
       </div>
     );
   }
