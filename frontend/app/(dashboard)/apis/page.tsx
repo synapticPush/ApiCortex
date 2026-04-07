@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -196,7 +197,34 @@ export default function ApisPage() {
     }
   };
   if (loading) {
-    return <div className="text-[#E6EAF2]">Loading APIs...</div>;
+    return (
+      <div className="w-full space-y-6 animate-in fade-in duration-300">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-56 bg-[#242938]" />
+            <Skeleton className="h-4 w-80 bg-[#161A23]" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-10 w-32 bg-[#161A23] border border-[#242938] rounded-xl" />
+            <Skeleton className="h-10 w-36 bg-[#161A23] border border-[#242938] rounded-xl" />
+          </div>
+        </div>
+        <div className="bg-[#161A23]/80 backdrop-blur-xl border border-[#242938] rounded-2xl p-4 space-y-4">
+          <Skeleton className="h-10 w-full max-w-sm bg-[#0F1117] border border-[#242938]" />
+          <div className="rounded-xl border border-[#242938] overflow-hidden bg-[#0F1117]/50">
+            <div className="h-12 border-b border-[#242938] bg-[#0F1117]" />
+            <div className="space-y-2 p-3">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <Skeleton
+                  key={index}
+                  className="h-14 w-full bg-[#161A23] border border-[#242938] rounded-lg"
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
   return (
     <div className="w-full space-y-6 flex flex-col h-[calc(100vh-8rem)]">

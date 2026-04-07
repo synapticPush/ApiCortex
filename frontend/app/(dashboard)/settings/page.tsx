@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api-client";
 import type {
   IngestKeyRotateResult,
@@ -210,7 +211,20 @@ export default function SettingsPage() {
   };
 
   if (loading) {
-    return <div className="text-[#E6EAF2]">Loading settings...</div>;
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-40 bg-[#242938]" />
+          <Skeleton className="h-4 w-96 bg-[#161A23]" />
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <Skeleton className="h-80 w-full bg-[#161A23] border border-[#242938] rounded-xl" />
+          <Skeleton className="h-80 w-full bg-[#161A23] border border-[#242938] rounded-xl" />
+        </div>
+        <Skeleton className="h-72 w-full bg-[#161A23] border border-[#242938] rounded-xl" />
+        <Skeleton className="h-64 w-full bg-[#161A23] border border-[#242938] rounded-xl" />
+      </div>
+    );
   }
 
   return (

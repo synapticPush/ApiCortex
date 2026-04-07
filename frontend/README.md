@@ -16,7 +16,7 @@ This is the frontend dashboard for **ApiCortex**, a developer-focused SaaS platf
    ```bash
    cp .env.example .env.local
    ```
-   Add your `NEXT_PUBLIC_API_URL` and Neon Auth details.
+   Set `NEXT_PUBLIC_API_URL`.
 
 2. Install dependencies:
    ```bash

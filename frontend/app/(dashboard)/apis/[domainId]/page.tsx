@@ -45,6 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api-client";
 import { API, Endpoint } from "@/lib/api-types";
 export default function DomainDetailsPage() {
@@ -86,8 +87,29 @@ export default function DomainDetailsPage() {
   }, [fetchDomainData]);
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full space-y-4">
-        <h2 className="text-2xl text-[#E6EAF2]">Loading...</h2>
+      <div className="w-full space-y-6 animate-in fade-in duration-300">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-10 w-10 rounded-lg bg-[#161A23] border border-[#242938]" />
+          <div className="space-y-2 flex-1">
+            <Skeleton className="h-9 w-72 bg-[#242938]" />
+            <Skeleton className="h-4 w-80 bg-[#161A23]" />
+          </div>
+          <Skeleton className="h-10 w-36 rounded-xl bg-[#161A23] border border-[#242938]" />
+        </div>
+        <div className="bg-[#161A23]/80 backdrop-blur-xl border border-[#242938] rounded-2xl p-4 space-y-4">
+          <Skeleton className="h-10 w-full max-w-sm bg-[#0F1117] border border-[#242938]" />
+          <div className="rounded-xl border border-[#242938] overflow-hidden bg-[#0F1117]/50">
+            <div className="h-12 border-b border-[#242938] bg-[#0F1117]" />
+            <div className="space-y-2 p-3">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <Skeleton
+                  key={index}
+                  className="h-12 w-full bg-[#161A23] border border-[#242938] rounded-lg"
+                />
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

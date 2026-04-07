@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api-client";
 import type {
   AuthSession,
@@ -126,7 +127,22 @@ export default function ProfilePage() {
   }, [profile?.name, profile?.email]);
 
   if (loading) {
-    return <div className="text-[#E6EAF2]">Loading profile...</div>;
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-44 bg-[#242938]" />
+          <Skeleton className="h-4 w-96 bg-[#161A23]" />
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <Skeleton className="xl:col-span-2 h-80 w-full bg-[#161A23] border border-[#242938] rounded-xl" />
+          <Skeleton className="h-80 w-full bg-[#161A23] border border-[#242938] rounded-xl" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Skeleton className="h-64 w-full bg-[#161A23] border border-[#242938] rounded-xl" />
+          <Skeleton className="h-64 w-full bg-[#161A23] border border-[#242938] rounded-xl" />
+        </div>
+      </div>
+    );
   }
 
   return (
