@@ -2,7 +2,8 @@
 import { Button } from "@/components/ui/button";
 import { Network } from "lucide-react";
 export default function LoginPage() {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const isProd = process.env.NEXT_PUBLIC_APP_ENV === "prod";
+  const apiUrl = isProd ? "/api-proxy" : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000");
 
   const handleGoogleLogin = () => {
     window.location.href = `${apiUrl}/auth/login/google`;
