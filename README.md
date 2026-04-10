@@ -29,8 +29,7 @@ Predict API Failures Before They Happen
 
 ---
 
-## Table of Contents
-
+## ✦ Table of Contents
 1. [Overview](#overview)
 2. [Architecture](#architecture)
 3. [Features](#features)
@@ -46,7 +45,7 @@ Predict API Failures Before They Happen
 
 ---
 
-## Overview
+## ✦ Overview
 
 **ApiCortex** is an enterprise-grade SaaS platform that predicts API failures before they occur using machine learning analytics on real production traffic. The platform ensures API contract compliance and provides proactive failure detection through advanced anomaly detection algorithms.
 
@@ -61,7 +60,25 @@ Predict API Failures Before They Happen
 
 ---
 
-## Architecture
+## ⬢ Deployment Status (MVP)
+
+For the initial MVP launch, we have adopted a hybrid-cloud strategy utilizing high-performance managed services to deliver a full-featured experience.
+
+| Component | Provider | Role |
+| :------- | :------- | :--- |
+| **Frontend** | **Vercel** | Dashboard & Edge Proxy |
+| **Backend** | **HuggingFace** | Unified Docker Orchestration |
+| **Metadata** | **NeonDB** | Serverless PostgreSQL |
+| **Metrics** | **TigerData** | Managed TimescaleDB |
+| **Streaming** | **Aiven** | Cloud Managed Kafka |
+| **Caching** | **Upstash** | Serverless Redis |
+
+> [!NOTE]  
+> To maximize efficiency and minimize cross-service latency on free-tier resources, the core backend services (Ingest, Control Plane, and ML Service) are orchestrated within a unified Docker container on HuggingFace Spaces. This architecture leverages a multi-stage build that pulls pre-compiled binaries and virtual environments from internal mirrors to generate a high-density, production-ready image, with a custom entrypoint script handling concurrent process management and environment isolation for the Go and Python runtimes.
+
+---
+
+## ❖ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -144,20 +161,20 @@ graph TB
 
 ---
 
-## Features
+## ✥ Features
 
 ### Core Features
 
 | Feature | Description | Status |
 |---------|-------------|--------|
-| Real-time Telemetry | Collect API metrics with <10ms latency | ✅ Active |
-| ML Failure Prediction | XGBoost-based anomaly detection | ✅ Active |
-| Contract Validation | OpenAPI 3.0 specification enforcement | ✅ Active |
-| Multi-tenant RBAC | Organization-based access control | ✅ Active |
-| Time-series Analytics | Historical data querying | ✅ Active |
-| Alerting System | Webhook-based notifications | ✅ Active |
-| Developer Dashboard | Interactive UI with live metrics | ✅ Active |
-| API Testing | Built-in endpoint testing tool | ✅ Active |
+| Real-time Telemetry | Collect API metrics with <10ms latency | ✔ Active |
+| ML Failure Prediction | XGBoost-based anomaly detection | ✔ Active |
+| Contract Validation | OpenAPI 3.0 specification enforcement | ✔ Active |
+| Multi-tenant RBAC | Organization-based access control | ✔ Active |
+| Time-series Analytics | Historical data querying | ✔ Active |
+| Alerting System | Webhook-based notifications | ✔ Active |
+| Developer Dashboard | Interactive UI with live metrics | ✔ Active |
+| API Testing | Built-in endpoint testing tool | ✔ Active |
 
 ### Technical Specifications
 
@@ -169,7 +186,7 @@ graph TB
 
 ---
 
-## System Components
+## ◈ System Components
 
 ### 1. Data Plane (Go)
 
@@ -263,7 +280,7 @@ Developer dashboard for monitoring and management.
 
 ---
 
-## Data Flow
+## ∿ Data Flow
 
 ### Telemetry Data Flow
 
@@ -315,7 +332,7 @@ flowchart TD
 
 ---
 
-## Installation
+## ⬢ Installation
 
 ### Prerequisites
 
@@ -354,7 +371,7 @@ cd ml-service && python app/main.py
 cd frontend && npm run dev
 ```
 
-## Configuration
+## ⌬ Configuration
 
 ### Environment Variables
 
@@ -396,7 +413,7 @@ ENABLE_SHAP=true
 
 ---
 
-## Usage
+## ⌗ Usage
 
 ### Dashboard Access
 
@@ -419,7 +436,7 @@ ENABLE_SHAP=true
 
 ---
 
-## Monitoring
+## ⊚ Monitoring
 
 ### Metrics Collection
 
@@ -466,7 +483,7 @@ Log format:
 
 ---
 
-## Troubleshooting
+## ⌕ Troubleshooting
 
 ### Common Issues
 
@@ -552,7 +569,7 @@ CREATE INDEX CONCURRENTLY ON api_telemetry (api_id, time DESC);
 
 ---
 
-## Security
+## ۞ Security
 
 ### Authentication Flow
 
@@ -582,7 +599,7 @@ sequenceDiagram
 
 ---
 
-## Contributing
+## ☍ Contributing
 
 1. Fork the repository
 2. Create feature branch
@@ -605,21 +622,21 @@ npm test
 
 ---
 
-## License
+## § License
 
 Check the [LICENSE](LICENSE)
 
 ---
 
-## Support
+## ℡ Support
 
 - **Email:** mail@0xarchit.is-a.dev
 - **Discussions:** https://github.com/0xarchit/ApiCortex/discussions
 - **Issues:** https://github.com/0xarchit/ApiCortex/issues
 
 **Developer team**
-- @0xarchit
-- @vxrachit
-- @synapticpush
+- [@0xarchit](https://github.com/0xarchit)
+- [@vxrachit](https://github.com/vxrachit)
+- [@synapticpush](https://github.com/synapticpush)
 
 ---
