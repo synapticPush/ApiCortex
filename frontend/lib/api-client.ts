@@ -15,6 +15,12 @@ const isLocalHost = (hostname: string) => {
 };
 
 const resolveBaseURL = () => {
+  const appEnv = (process.env.NEXT_PUBLIC_APP_ENV || "dev").trim().toLowerCase();
+
+  if (appEnv === "prod") {
+    return (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").trim();
+  }
+
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
     if (host && !isLocalHost(host)) {
