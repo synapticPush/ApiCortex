@@ -1,12 +1,15 @@
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use reqwest::{Client, Method, Url};
 use serde_json::{json, Value};
 use thiserror::Error;
+use tokio::net::TcpStream;
 use tokio::time::timeout;
-use tokio_tungstenite::{connect_async_with_config, tungstenite::protocol::Message};
+use tokio_native_tls::TlsConnector;
+use tokio_tungstenite::{client_async_with_config, tungstenite::protocol::Message};
 
 use crate::models::{
     ExecuteRequest, ExecuteResult, HttpResult, NetworkDiagnostics, Protocol, WsConfig, WsMessage,
@@ -51,20 +54,29 @@ impl Executor {
         }
     }
 
-    fn build_client(&self, follow_redirects: bool) -> Result<Client, ExecutorError> {
+    fn build_client(
+        &self,
+        follow_redirects: bool,
+        pinned_resolution: Option<(&str, SocketAddr)>,
+    ) -> Result<Client, ExecutorError> {
         let redirect_policy = if follow_redirects {
             reqwest::redirect::Policy::limited(10)
         } else {
             reqwest::redirect::Policy::none()
         };
-        Client::builder()
+
+        let mut builder = Client::builder()
             .use_rustls_tls()
             .gzip(true)
             .deflate(true)
             .redirect(redirect_policy)
-            .danger_accept_invalid_certs(false)
-            .build()
-            .map_err(ExecutorError::HttpClient)
+            .danger_accept_invalid_certs(false);
+
+        if let Some((host, addr)) = pinned_resolution {
+            builder = builder.resolve(host, addr);
+        }
+
+        builder.build().map_err(ExecutorError::HttpClient)
     }
 
     fn is_blocked_ip(&self, addr: std::net::IpAddr) -> bool {
@@ -145,20 +157,32 @@ impl Executor {
         let dns_start = Instant::now();
         let host = url.host_str().unwrap_or("");
         let port = url.port_or_known_default().unwrap_or(80);
-        let resolved = tokio::net::lookup_host(format!("{}:{}", host, port))
+        let resolved = tokio::net::lookup_host((host, port))
             .await
-            .map_err(|e| ExecutorError::DnsResolution(e.to_string()))?;
-        
+            .map_err(|e| ExecutorError::DnsResolution(e.to_string()))?
+            .collect::<Vec<_>>();
+
+        if resolved.is_empty() {
+            return Err(ExecutorError::DnsResolution("no addresses found".to_string()));
+        }
+
+        let mut pinned_addr = None;
         for addr_info in resolved {
             let addr = addr_info.ip();
             if self.is_blocked_ip(addr) {
                 return Err(ExecutorError::BlockedIp(addr.to_string()));
             }
+            if pinned_addr.is_none() {
+                pinned_addr = Some(addr_info);
+            }
         }
         let dns_elapsed_ms = dns_start.elapsed().as_secs_f64() * 1000.0;
+        let selected_addr = pinned_addr.ok_or_else(|| {
+            ExecutorError::DnsResolution("no non-blocked addresses found".to_string())
+        })?;
 
         let mut builder = self
-            .build_client(follow_redirects)?
+            .build_client(follow_redirects, Some((host, selected_addr)))?
             .request(method, url)
             .timeout(request_timeout);
 
@@ -261,16 +285,29 @@ impl Executor {
         let host = parsed_url.host_str().ok_or_else(|| ExecutorError::InvalidUrl("missing host".to_string()))?;
         let port = parsed_url.port_or_known_default().unwrap_or(80);
 
-        let resolved = tokio::net::lookup_host(format!("{}:{}", host, port))
+        let resolved = tokio::net::lookup_host((host, port))
             .await
-            .map_err(|e| ExecutorError::DnsResolution(e.to_string()))?;
-        
+            .map_err(|e| ExecutorError::DnsResolution(e.to_string()))?
+            .collect::<Vec<_>>();
+
+        if resolved.is_empty() {
+            return Err(ExecutorError::DnsResolution("no addresses found".to_string()));
+        }
+
+        let mut pinned_addr = None;
         for addr_info in resolved {
             let addr = addr_info.ip();
             if self.is_blocked_ip(addr) {
                 return Err(ExecutorError::BlockedIp(addr.to_string()));
             }
+            if pinned_addr.is_none() {
+                pinned_addr = Some(addr_info);
+            }
         }
+
+        let selected_addr = pinned_addr.ok_or_else(|| {
+            ExecutorError::DnsResolution("no non-blocked addresses found".to_string())
+        })?;
 
         let mut request = tokio_tungstenite::tungstenite::client::IntoClientRequest::into_client_request(url)
             .map_err(|e| ExecutorError::WebSocket(e.to_string()))?;
@@ -285,9 +322,29 @@ impl Executor {
             request.headers_mut().insert(name, val);
         }
 
+        let tcp_stream = timeout(connection_timeout, TcpStream::connect(selected_addr))
+            .await
+            .map_err(|_| ExecutorError::ConnectionTimeout)?
+            .map_err(|e: std::io::Error| ExecutorError::WebSocket(format!("TCP connection failed: {}", e)))?;
+
+        let stream = if url.starts_with("wss") {
+            let connector = native_tls::TlsConnector::builder()
+                .build()
+                .map_err(|e: native_tls::Error| ExecutorError::WebSocket(format!("TLS builder error: {}", e)))?;
+            let connector = TlsConnector::from(connector);
+            let tls_stream = connector
+                .connect(host, tcp_stream)
+                .await
+                .map_err(|e: tokio_native_tls::native_tls::Error| ExecutorError::WebSocket(format!("TLS handshake failed: {}", e)))?;
+            tokio_tungstenite::MaybeTlsStream::NativeTls(tls_stream)
+        } else {
+            tokio_tungstenite::MaybeTlsStream::Plain(tcp_stream)
+        };
+
+        
         let (ws_stream, _) = timeout(
             connection_timeout,
-            connect_async_with_config(request, None, false),
+            client_async_with_config(request, stream, None),
         )
         .await
         .map_err(|_| ExecutorError::ConnectionTimeout)?
