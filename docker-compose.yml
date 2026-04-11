@@ -71,6 +71,7 @@ services:
       ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
       ALERT_POLL_TIMEOUT_SECONDS: ${ALERT_POLL_TIMEOUT_SECONDS:-1.0}
       INGEST_KEY_PEPPER: ${INGEST_KEY_PEPPER:-}
+      API_TESTING_URL: http://api-testing:9090
     healthcheck:
       test:
         [
@@ -83,6 +84,23 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  api-testing:
+    <<: *runtime-defaults
+    build:
+      context: ./api-testing
+      dockerfile: Dockerfile
+    image: apicortex-api-testing:latest
+    stop_grace_period: 10s
+    environment:
+      BIND_ADDR: "0.0.0.0:9090"
+      RUST_LOG: "info"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://127.0.0.1:9090/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   ingest-service:
     <<: *runtime-defaults
