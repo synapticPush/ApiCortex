@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     alert_webhook_url: str = Field(default="", validation_alias="ALERT_WEBHOOK_URL")
     alert_poll_timeout_seconds: float = Field(default=1.0, validation_alias="ALERT_POLL_TIMEOUT_SECONDS")
     ingest_key_pepper: str = Field(default="", validation_alias="INGEST_KEY_PEPPER")
+    api_testing_url: str = Field(default="http://api-testing:9090", validation_alias="API_TESTING_URL")
 
     @field_validator("app_env", mode="before")
     @classmethod
