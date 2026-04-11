@@ -7,6 +7,7 @@ from urllib.parse import parse_qsl, unquote, urlsplit
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -201,7 +202,13 @@ async def execute_test(payload: ExecuteRequest, request: Request) -> ExecuteResp
                 headers={"Content-Type": "application/json"},
             )
             resp.raise_for_status()
-            return ExecuteResponse.model_validate(resp.json())
+            try:
+                return ExecuteResponse.model_validate(resp.json())
+            except (ValueError, ValidationError) as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Execution engine returned an invalid response",
+                ) from exc
         except httpx.TimeoutException:
             raise HTTPException(status_code=504, detail="Execution engine timed out")
         except httpx.HTTPStatusError as exc:

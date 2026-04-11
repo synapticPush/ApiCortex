@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
 
 
 class TestRequest(BaseModel):
@@ -32,10 +32,10 @@ class TestResponse(BaseModel):
 class WsConfig(BaseModel):
     initial_message: str | None = None
     strategy: Literal["single", "duration", "count"] = "single"
-    listen_duration_ms: int | None = None
-    message_count: int | None = None
-    timeout_ms: int | None = 5000
-    connection_timeout_ms: int | None = 5000
+    listen_duration_ms: int | None = Field(default=None, ge=1)
+    message_count: int | None = Field(default=None, ge=1)
+    timeout_ms: int | None = Field(default=5000, ge=1)
+    connection_timeout_ms: int | None = Field(default=5000, ge=1)
 
 
 class ExecuteRequest(BaseModel):
@@ -46,7 +46,7 @@ class ExecuteRequest(BaseModel):
     headers: dict[str, str] = {}
     body: Any | None = None
     follow_redirects: bool | None = True
-    timeout_ms: int | None = 30000
+    timeout_ms: int | None = Field(default=30000, ge=1)
     ws_config: WsConfig | None = None
 
 
@@ -82,5 +82,5 @@ class WsResult(BaseModel):
 class ExecuteResponse(BaseModel):
     test_id: str | None = None
     success: bool
-    result: Any | None = None
+    result: HttpResult | WsResult | None = None
     error: str | None = None
