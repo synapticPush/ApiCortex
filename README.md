@@ -39,11 +39,10 @@ Predict API Failures Before They Happen
 6. [Installation](#-installation)
 7. [Configuration](#-configuration)
 8. [Usage](#-usage)
-9. [API Reference](#-api-reference)
-10. [Monitoring](#-monitoring)
-11. [Troubleshooting](#-troubleshooting)
-12. [Dependencies](#-dependencies)
-13. [License](#-license)
+9. [Monitoring](#-monitoring)
+10. [Troubleshooting](#-troubleshooting)
+11. [Dependencies](#-dependencies)
+12. [License](#-license)
 
 ---
 

@@ -7,7 +7,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::protocol::Message;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use api_testing::executor::Executor;
@@ -227,6 +227,9 @@ async fn test_http_custom_headers_and_cors_bypass() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/headers"))
+        .and(header("Origin", "https://custom-origin.com"))
+        .and(header("Referer", "https://referer.example.com"))
+        .and(header("User-Agent", "ApiCortex-Tester/1.0"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
         .mount(&mock_server)
         .await;
@@ -560,11 +563,11 @@ async fn test_ssrf_block_metadata_service() {
 
 #[tokio::test]
 async fn test_unsupported_http_method_errors() {
-    let executor = Executor::new();
+    let executor = Executor::new_unsecured();
     let req = ExecuteRequest {
         test_id: None,
         protocol: Protocol::Http,
-        url: "http://example.com".to_string(),
+        url: "http://localhost:9999/path".to_string(), // Dummy local URL
         method: Some("CONNECT".to_string()),
         headers: HashMap::new(),
         body: None,
@@ -573,5 +576,11 @@ async fn test_unsupported_http_method_errors() {
         ws_config: None,
     };
     let result = executor.execute(req).await;
-    assert!(result.is_err());
+    
+    match result {
+        Err(api_testing::executor::ExecutorError::UnsupportedMethod(m)) => {
+            assert_eq!(m, "CONNECT");
+        }
+        _ => panic!("expected UnsupportedMethod error, got {:?}", result),
+    }
 }
