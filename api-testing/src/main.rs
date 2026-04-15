@@ -1,3 +1,5 @@
+//! Entrypoint for the api-testing executor service.
+
 use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};

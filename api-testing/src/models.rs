@@ -1,6 +1,9 @@
+//! Data models for test requests and responses.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Supported protocol types for testing.
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Protocol {
@@ -9,6 +12,7 @@ pub enum Protocol {
     Websocket,
 }
 
+/// WebSocket message collection strategy.
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum WsStrategy {
@@ -23,6 +27,7 @@ impl Default for WsStrategy {
     }
 }
 
+/// WebSocket connection configuration.
 #[derive(Debug, Deserialize, Clone)]
 pub struct WsConfig {
     pub initial_message: Option<String>,
@@ -34,6 +39,7 @@ pub struct WsConfig {
     pub connection_timeout_ms: Option<u64>,
 }
 
+/// Test execution request.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ExecuteRequest {
     pub test_id: Option<String>,
@@ -48,6 +54,7 @@ pub struct ExecuteRequest {
     pub ws_config: Option<WsConfig>,
 }
 
+/// Network timing diagnostics.
 #[derive(Debug, Serialize, Default)]
 pub struct NetworkDiagnostics {
     pub dns_resolution_time_ms: Option<f64>,
@@ -57,6 +64,7 @@ pub struct NetworkDiagnostics {
     pub total_time_ms: f64,
 }
 
+/// HTTP response result with diagnostics.
 #[derive(Debug, Serialize)]
 pub struct HttpResult {
     pub status_code: u16,
@@ -66,6 +74,7 @@ pub struct HttpResult {
     pub diagnostics: NetworkDiagnostics,
 }
 
+/// WebSocket message received.
 #[derive(Debug, Serialize)]
 pub struct WsMessage {
     pub index: usize,
@@ -73,6 +82,7 @@ pub struct WsMessage {
     pub received_at_ms: f64,
 }
 
+/// WebSocket connection result.
 #[derive(Debug, Serialize)]
 pub struct WsResult {
     pub messages: Vec<WsMessage>,
@@ -81,6 +91,7 @@ pub struct WsResult {
     pub message_count: usize,
 }
 
+/// Test execution result.
 #[derive(Debug, Serialize)]
 #[serde(tag = "protocol", rename_all = "lowercase")]
 pub enum ExecuteResult {
@@ -89,6 +100,7 @@ pub enum ExecuteResult {
     Websocket(WsResult),
 }
 
+/// Test execution response.
 #[derive(Debug, Serialize)]
 pub struct ExecuteResponse {
     pub test_id: Option<String>,
@@ -98,6 +110,7 @@ pub struct ExecuteResponse {
 }
 
 impl ExecuteResponse {
+    /// Creates a successful response.
     pub fn ok(test_id: Option<String>, result: ExecuteResult) -> Self {
         Self {
             test_id,
@@ -107,6 +120,7 @@ impl ExecuteResponse {
         }
     }
 
+    /// Creates an error response.
     pub fn err(test_id: Option<String>, msg: impl Into<String>) -> Self {
         Self {
             test_id,

@@ -1,3 +1,5 @@
+//! Integration tests for the api-testing executor service.
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -17,6 +19,7 @@ use api_testing::models::{
 use api_testing::{create_app, AppState};
 use std::sync::Arc;
 
+/// Creates an HTTP test request with common defaults.
 fn make_http_req(url: &str, http_method: &str, body: Option<Value>) -> ExecuteRequest {
     ExecuteRequest {
         test_id: Some("test-1".to_string()),
@@ -31,6 +34,7 @@ fn make_http_req(url: &str, http_method: &str, body: Option<Value>) -> ExecuteRe
     }
 }
 
+/// Starts a simple echo WebSocket server for testing.
 async fn start_echo_ws_server() -> (SocketAddr, tokio::task::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -52,6 +56,7 @@ async fn start_echo_ws_server() -> (SocketAddr, tokio::task::JoinHandle<()>) {
     (addr, handle)
 }
 
+/// Starts a WebSocket server that sends a burst of messages on connection.
 async fn start_burst_ws_server(burst_count: usize) -> (SocketAddr, tokio::task::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

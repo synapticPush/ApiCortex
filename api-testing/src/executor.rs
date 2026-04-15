@@ -1,3 +1,5 @@
+//! Test executor for HTTP, GraphQL, and WebSocket protocols with network diagnostics.
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
@@ -16,6 +18,7 @@ use crate::models::{
     WsResult, WsStrategy,
 };
 
+/// Executor error types.
 #[derive(Debug, Error)]
 pub enum ExecutorError {
     #[error("invalid URL: {0}")]
@@ -36,11 +39,13 @@ pub enum ExecutorError {
     UnsupportedMethod(String),
 }
 
+/// Test executor for protocol-specific request handling.
 pub struct Executor {
     pub allow_private_ips: bool,
 }
 
 impl Executor {
+    /// Creates a new executor with default security settings.
     pub fn new() -> Self {
         Self {
             allow_private_ips: false,
@@ -98,6 +103,7 @@ impl Executor {
         }
     }
 
+    /// Executes a test request based on protocol type.
     pub async fn execute(&self, req: ExecuteRequest) -> Result<ExecuteResult, ExecutorError> {
         match req.protocol {
             Protocol::Http => {

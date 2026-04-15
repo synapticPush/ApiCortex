@@ -1,3 +1,5 @@
+//! API testing executor service for HTTP, GraphQL, and WebSocket protocols.
+
 use std::sync::Arc;
 
 use axum::{
@@ -15,15 +17,18 @@ pub mod models;
 use executor::Executor;
 use models::{ExecuteRequest, ExecuteResponse};
 
+/// Application state holding the test executor.
 #[derive(Clone)]
 pub struct AppState {
     pub executor: Arc<Executor>,
 }
 
+/// Health check endpoint.
 pub async fn health() -> impl IntoResponse {
     Json(serde_json::json!({ "status": "ok" }))
 }
 
+/// Executes an HTTP, GraphQL, or WebSocket test.
 pub async fn execute_handler(
     State(state): State<AppState>,
     Json(payload): Json<ExecuteRequest>,
@@ -41,6 +46,7 @@ pub async fn execute_handler(
     }
 }
 
+/// Creates the Axum application with routes and middleware.
 pub fn create_app(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
