@@ -294,13 +294,20 @@ FastAPI route handlers organized by feature domain.
 - Role-based membership
 - Plan management
 
-#### `/test/` - API Proxy with SSRF Controls
-- `POST /test/request` - Test external API call
+#### `/test/` - API Testing & Contract Validation
+- `POST /test/request` - Test registered API call (org-allowlisted)
+- `POST /test/execute` - Test any public URL (executor-backed)
 
-**Security:**
-- Whitelist-based domain validation
-- Timeout enforcement
-- SSRF attack prevention
+**`/request` Features:**
+- Organization-scoped allowlist (restricted to registered `API.base_url` entries)
+- API contract validation
+- Real-time response schema verification
+
+**`/execute` Features:**
+- Allows testing any public URL
+- Protocol support: HTTP, GraphQL, WebSocket (via Rust executor)
+- SSRF protection enforced in executor layer (`api-testing/src/executor.rs`)
+- Timeout configuration per request
 
 ---
 

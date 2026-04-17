@@ -1,7 +1,8 @@
 """API testing and proxy endpoints.
 
-Provides an authenticated proxy for testing API contracts and GraphQL queries
-with organization-scoped allowlists and security controls.
+Two complementary endpoints for API testing:
+- /request: Organization-allowlisted proxy for contract validation (restricted to registered API.base_url entries)
+- /execute: Executor-backed endpoint for testing any public URL (SSRF protections enforced in Rust executor layer)
 """
 import ipaddress
 import posixpath
