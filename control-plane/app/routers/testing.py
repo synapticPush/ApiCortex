@@ -178,93 +178,44 @@ async def proxy_test_request(payload: TestRequest, request: Request, db: Session
 
 
 @router.post("/execute", response_model=ExecuteResponse)
-async def execute_test(payload: ExecuteRequest, request: Request, db: Session = Depends(get_db)):
-    """Execute API test with protocol support for HTTP, GraphQL, and WebSocket.
+async def execute_test(payload: ExecuteRequest, request: Request):
+    """Execute API test by proxying to the Rust executor service.
+    
+    Allows testing any public URL. SSRF protection is enforced in the Rust executor.
     
     Args:
         payload: ExecuteRequest containing test configuration and target URL.
         request: FastAPI request with org_id in state.
-        db: Database session for org-scoped URL validation.
         
     Returns:
-        ExecuteResponse with test results or error details.
+        ExecuteResponse with test results or error details from executor.
     """
+    from app.core.config import settings
+    
     org_id_raw = getattr(request.state, "org_id", None)
     if org_id_raw is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
-        org_id = uuid.UUID(str(org_id_raw))
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    allowed_base_urls = list(db.scalars(select(API.base_url).where(API.org_id == org_id)).all())
-    if not allowed_base_urls:
-        raise HTTPException(status_code=403, detail="No API base URL registered for this organization")
-
-    base_url, relative_url, query_params = _resolve_outbound_target(str(payload.url), allowed_base_urls)
-    headers = payload.headers or {}
-    start_time = time.time()
-
-    try:
-        if payload.protocol == "http":
-            async with httpx.AsyncClient(
-                base_url=base_url,
-                follow_redirects=payload.follow_redirects or False,
-                timeout=httpx.Timeout(payload.timeout_ms / 1000 if payload.timeout_ms else 30.0, connect=3.0)
-            ) as client:
-                response = await client.request(
-                    method=payload.method or "GET",
-                    url=relative_url,
-                    params=query_params or None,
-                    headers=headers,
-                    json=payload.body if isinstance(payload.body, (dict, list)) else None,
-                    data=payload.body if isinstance(payload.body, str) else None,
+        executor_url = f"{settings.api_testing_url}/execute"
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0)) as client:
+            response = await client.post(
+                executor_url,
+                json=payload.model_dump(by_alias=False),
+                headers={"X-Org-Id": str(org_id_raw)}
+            )
+            
+            if response.status_code == 200:
+                return ExecuteResponse(**response.json())
+            else:
+                return ExecuteResponse(
+                    test_id=payload.test_id,
+                    success=False,
+                    error=f"Executor error: {response.text}"
                 )
-                elapsed_ms = int((time.time() - start_time) * 1000)
-                
-                try:
-                    resp_body = response.json()
-                except ValueError:
-                    resp_body = response.text
-
-                from app.schemas.testing import HttpResult, NetworkDiagnostics
-                result = HttpResult(
-                    status_code=response.status_code,
-                    headers=dict(response.headers),
-                    body=resp_body,
-                    body_size_bytes=len(response.content),
-                    diagnostics=NetworkDiagnostics(total_time_ms=elapsed_ms)
-                )
-                return ExecuteResponse(test_id=payload.test_id, success=True, result=result)
-        elif payload.protocol == "graphql":
-            async with httpx.AsyncClient(
-                base_url=base_url,
-                timeout=httpx.Timeout(payload.timeout_ms / 1000 if payload.timeout_ms else 30.0, connect=3.0)
-            ) as client:
-                response = await client.post(
-                    url=relative_url,
-                    params=query_params or None,
-                    headers={**headers, "Content-Type": "application/json"},
-                    json=payload.body if isinstance(payload.body, dict) else {}
-                )
-                elapsed_ms = int((time.time() - start_time) * 1000)
-                
-                try:
-                    resp_body = response.json()
-                except ValueError:
-                    resp_body = response.text
-
-                from app.schemas.testing import HttpResult, NetworkDiagnostics
-                result = HttpResult(
-                    status_code=response.status_code,
-                    headers=dict(response.headers),
-                    body=resp_body,
-                    body_size_bytes=len(response.content),
-                    diagnostics=NetworkDiagnostics(total_time_ms=elapsed_ms)
-                )
-                return ExecuteResponse(test_id=payload.test_id, success=True, result=result)
-        else:
-            return ExecuteResponse(test_id=payload.test_id, success=False, error="Unsupported protocol")
     except httpx.RequestError as exc:
-        return ExecuteResponse(test_id=payload.test_id, success=False, error=f"Request error: {str(exc)}")
+        return ExecuteResponse(
+            test_id=payload.test_id,
+            success=False,
+            error=f"Executor connection error: {str(exc)}"
+        )
