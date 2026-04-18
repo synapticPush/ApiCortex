@@ -20,11 +20,13 @@ type contextKey string
 const requestIDContextKey contextKey = "request_id"
 const ingestAPIKeyContextKey contextKey = "ingest_api_key"
 
+// ipLimiter tracks rate limiting state per IP address.
 type ipLimiter struct {
 	limiter  *rate.Limiter
 	lastSeen time.Time
 }
 
+// RateLimiter implements per-IP rate limiting with automatic cleanup of stale entries.
 type RateLimiter struct {
 	mu      sync.Mutex
 	clients map[string]*ipLimiter
@@ -33,6 +35,14 @@ type RateLimiter struct {
 	ttl     time.Duration
 }
 
+// NewRateLimiter creates a new rate limiter with specified RPS, burst, and TTL.
+//
+// Args:
+//   - rps: requests per second limit for each IP
+//   - burst: burst capacity for token bucket
+//   - ttl: idle time before removing IP entry (minimum 5 minutes)
+//
+// Starts a background cleanup goroutine.
 func NewRateLimiter(rps int, burst int, ttl time.Duration) *RateLimiter {
 	if ttl <= 0 {
 		ttl = 5 * time.Minute
@@ -47,6 +57,7 @@ func NewRateLimiter(rps int, burst int, ttl time.Duration) *RateLimiter {
 	return rl
 }
 
+// cleanupLoop periodically removes stale rate limiter entries.
 func (rl *RateLimiter) cleanupLoop() {
 	ticker := time.NewTicker(2 * time.Minute)
 	defer ticker.Stop()
@@ -77,6 +88,10 @@ func (rl *RateLimiter) allow(ip string) bool {
 	return lim.Allow()
 }
 
+// Chain composes multiple middleware functions in reverse order.
+//
+// Applies middlewares from last to first, so the first middleware in the list
+// is closest to the handler.
 func Chain(middlewares ...func(http.Handler) http.Handler) func(http.Handler) http.Handler {
 	return func(final http.Handler) http.Handler {
 		h := final
@@ -87,6 +102,9 @@ func Chain(middlewares ...func(http.Handler) http.Handler) func(http.Handler) ht
 	}
 }
 
+// CORSMiddleware adds CORS headers and handles preflight requests.
+//
+// Validates origin against allowed list and sets appropriate CORS headers.
 func CORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	origins := make(map[string]struct{}, len(allowedOrigins))
 	for _, origin := range allowedOrigins {
@@ -118,6 +136,7 @@ func CORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	}
 }
 
+// RecoverMiddleware recovers from panics and logs them as errors.
 func RecoverMiddleware(logger zerolog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -132,6 +151,14 @@ func RecoverMiddleware(logger zerolog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+// SecurityHeadersMiddleware adds security-related HTTP response headers.
+//
+// Sets headers for:
+// - Clickjacking protection (X-Frame-Options)
+// - MIME type sniffing protection (X-Content-Type-Options)
+// - Referrer policy (no-referrer)
+// - Feature permissions (geolocation, microphone, camera disabled)
+// - HSTS (Strict-Transport-Security)
 func SecurityHeadersMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +172,9 @@ func SecurityHeadersMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
+// RequestIDMiddleware generates and attaches a unique request ID to each request.
+//
+// Uses X-Request-ID header if provided, otherwise generates a new UUID.
 func RequestIDMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -159,6 +189,9 @@ func RequestIDMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
+// RateLimitMiddleware enforces per-IP rate limiting.
+//
+// Exempts health, readiness, and metrics endpoints from rate limiting.
 func RateLimitMiddleware(rl *RateLimiter, logger zerolog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -177,6 +210,10 @@ func RateLimitMiddleware(rl *RateLimiter, logger zerolog.Logger) func(http.Handl
 	}
 }
 
+// APIKeyAuthMiddleware validates API key authentication for telemetry endpoints.
+//
+// Exempts health, readiness, metrics, and swagger endpoints.
+// Stores validated API key in request context for downstream access.
 func APIKeyAuthMiddleware(require bool, apiKey string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

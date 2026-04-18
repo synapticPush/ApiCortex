@@ -16,6 +16,10 @@ import (
 	"ingest-service/internal/tracker"
 )
 
+// Handler processes HTTP requests for telemetry ingestion and live endpoint tracking.
+//
+// Handles telemetry event batching, organization validation, API key authentication,
+// and rate limiting enforcement.
 type Handler struct {
 	batcher         *buffer.Batcher
 	metrics         *metrics.Registry
@@ -26,15 +30,35 @@ type Handler struct {
 	masterAPIKey    string
 }
 
+// OrgValidator interface for organization and ingest key validation.
 type OrgValidator interface {
+	// Validate checks if an organization ID is valid.
 	Validate(ctx context.Context, orgID string) (bool, error)
+	// ValidateIngestKey checks if the provided API key is valid for the organization.
 	ValidateIngestKey(ctx context.Context, orgID string, providedAPIKey string) (bool, error)
 }
 
+// NewHandler creates a new HTTP handler for telemetry ingestion.
+//
+// Args:
+//   - b: event batcher for buffering and batching telemetry events
+//   - m: metrics registry for tracking ingest operations
+//   - t: live tracker for endpoint observation
+//   - logger: structured logger instance
+//   - maxEventsPerReq: maximum events allowed per request
+//   - orgValidator: organization validation provider
+//   - masterAPIKey: master API key for authentication
+//
+// Returns configured Handler instance.
 func NewHandler(b *buffer.Batcher, m *metrics.Registry, t *tracker.LiveTracker, logger zerolog.Logger, maxEventsPerReq int, orgValidator OrgValidator, masterAPIKey string) *Handler {
 	return &Handler{batcher: b, metrics: m, tracker: t, logger: logger, maxEventsPerReq: maxEventsPerReq, orgValidator: orgValidator, masterAPIKey: masterAPIKey}
 }
 
+// IngestTelemetry handles POST requests for telemetry event ingestion.
+//
+// Validates request format, checks organization membership and API key credentials,
+// validates event schemas, and enqueues events for batch processing.
+// Returns 202 Accepted on success or appropriate error status codes.
 func (h *Handler) IngestTelemetry(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -136,6 +160,11 @@ func (h *Handler) IngestTelemetry(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListLiveEndpoints handles GET requests to retrieve live endpoint observations.
+//
+// Returns paginated list of endpoints with optional filtering by organization,
+// API, HTTP method, or endpoint path substring.
+// Supports 'limit' query parameter to control result count.
 func (h *Handler) ListLiveEndpoints(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -167,11 +196,17 @@ func (h *Handler) ListLiveEndpoints(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Health returns the health status of the service.
+//
+// Always returns 200 OK with "status": "ok".
 func (h *Handler) Health(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// Ready returns the readiness status of the service.
+//
+// Returns 200 OK if buffer has capacity, 503 Service Unavailable if buffer is full.
 func (h *Handler) Ready(w http.ResponseWriter, _ *http.Request) {
 	if h.batcher.QueueLen() >= h.batcher.QueueCap() {
 		w.Header().Set("Content-Type", "application/json")

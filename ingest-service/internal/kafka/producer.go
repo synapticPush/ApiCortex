@@ -20,12 +20,27 @@ import (
 
 const TopicTelemetryRaw = "telemetry.raw"
 
+// Producer publishes telemetry event batches to Kafka with gzip compression.
+//
+// Supports TLS client authentication and configures Kafka writer for
+// at-least-once delivery semantics.
 type Producer struct {
 	writer  *kafkago.Writer
 	logger  zerolog.Logger
 	metrics *metrics.Registry
 }
 
+// NewProducer creates a new Kafka producer with TLS configuration.
+//
+// Args:
+//   - brokersCSV: comma-separated list of Kafka brokers
+//   - caPEM: PEM-encoded CA certificate
+//   - certPEM: PEM-encoded client certificate
+//   - keyPEM: PEM-encoded client private key
+//   - logger: structured logger instance
+//   - m: metrics registry for tracking publish operations
+//
+// Returns error if broker list is empty or TLS config fails to load.
 func NewProducer(brokersCSV, caPEM, certPEM, keyPEM string, logger zerolog.Logger, m *metrics.Registry) (*Producer, error) {
 	brokers := splitAndTrim(brokersCSV)
 	if len(brokers) == 0 {
@@ -55,6 +70,10 @@ func NewProducer(brokersCSV, caPEM, certPEM, keyPEM string, logger zerolog.Logge
 	return &Producer{writer: writer, logger: logger, metrics: m}, nil
 }
 
+// PublishBatch publishes a batch of telemetry events to Kafka.
+//
+// Events are compressed with gzip and sent with metadata headers.
+// Returns error if encoding or Kafka write fails.
 func (p *Producer) PublishBatch(ctx context.Context, events []model.TelemetryEvent) error {
 	if len(events) == 0 {
 		return nil

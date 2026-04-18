@@ -19,12 +19,16 @@ import (
 	"ingest-service/internal/tracker"
 )
 
+// Batcher interface for enqueuing telemetry events.
 type Batcher interface {
 	TryEnqueue(events []model.TelemetryEvent) bool
 	QueueLen() int
 	QueueCap() int
 }
 
+// Target represents a polling configuration for a monitored API endpoint.
+//
+// Defines the HTTP request to make, interval, timeout, and expected behavior.
 type Target struct {
 	Name            string
 	EndpointID      string
@@ -43,6 +47,7 @@ type Target struct {
 	ExpectedSuccess []int
 }
 
+// TargetStatus represents the current polling state and history for a target.
 type TargetStatus struct {
 	TargetKey           string    `json:"target_key"`
 	Name                string    `json:"name"`
@@ -60,6 +65,7 @@ type TargetStatus struct {
 	ConsecutiveFailures int       `json:"consecutive_failures"`
 }
 
+// targetRunner manages polling for a single target endpoint.
 type targetRunner struct {
 	target      Target
 	fingerprint string
@@ -68,6 +74,10 @@ type targetRunner struct {
 	status      TargetStatus
 }
 
+// Poller manages concurrent polling of multiple API endpoints.
+//
+// Handles target lifecycle (add, update, remove) and publishes telemetry events
+// for each poll attempt to the event batcher.
 type Poller struct {
 	initialTargets []Target
 	batcher        Batcher
@@ -82,6 +92,9 @@ type Poller struct {
 	runners        map[string]*targetRunner
 }
 
+// New creates a new Poller with initial targets and configured dependencies.
+//
+// Sanitizes targets before storing. Configures HTTP transport with connection pooling.
 func New(targets []Target, batcher Batcher, metricsRegistry *metrics.Registry, liveTracker *tracker.LiveTracker, logger zerolog.Logger) *Poller {
 	cleanTargets := make([]Target, 0, len(targets))
 	for _, target := range targets {
@@ -109,6 +122,7 @@ func New(targets []Target, batcher Batcher, metricsRegistry *metrics.Registry, l
 	}
 }
 
+// Start begins polling all targets in background goroutines.
 func (p *Poller) Start(ctx context.Context) {
 	p.mu.Lock()
 	if p.started {
@@ -126,10 +140,15 @@ func (p *Poller) Start(ctx context.Context) {
 	}
 }
 
+// Wait blocks until all poller goroutines complete.
 func (p *Poller) Wait() {
 	p.wg.Wait()
 }
 
+// AddOrUpdateTarget adds a new polling target or updates an existing one.
+//
+// Returns (targetKey, true) when a new target is added or existing target is updated.
+// Returns ("", false) if sanitization fails, poller has not been started, or a target with the same fingerprint exists.
 func (p *Poller) AddOrUpdateTarget(target Target) (string, bool) {
 	cleaned, ok := sanitizeTarget(target)
 	if !ok {

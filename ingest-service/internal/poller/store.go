@@ -11,6 +11,9 @@ import (
 	_ "github.com/lib/pq"
 )
 
+// DBTargetStore loads and manages polling target configurations from PostgreSQL.
+//
+// Queries control plane database for API endpoints and converts them into Target objects.
 type DBTargetStore struct {
 	db                  *sql.DB
 	defaultPollInterval time.Duration
@@ -18,6 +21,16 @@ type DBTargetStore struct {
 	defaultBackoff      time.Duration
 }
 
+// NewDBTargetStore creates a new store connected to the control plane database.
+//
+// Args:
+//   - databaseURL: PostgreSQL connection URL
+//   - defaultPollInterval: default polling interval if not specified
+//   - defaultPollTimeout: default poll timeout
+//   - defaultBackoff: default backoff interval on failure
+//
+// Returns nil store if database URL is empty (passthrough mode).
+// Returns error if connection fails or database ping fails.
 func NewDBTargetStore(databaseURL string, defaultPollInterval, defaultPollTimeout, defaultBackoff time.Duration) (*DBTargetStore, error) {
 	trimmed := normalizeDatabaseURL(databaseURL)
 	if trimmed == "" {
@@ -51,6 +64,7 @@ func NewDBTargetStore(databaseURL string, defaultPollInterval, defaultPollTimeou
 	}, nil
 }
 
+// Close closes the database connection.
 func (s *DBTargetStore) Close() error {
 	if s == nil || s.db == nil {
 		return nil

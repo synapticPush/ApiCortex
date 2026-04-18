@@ -2,6 +2,8 @@ package api
 
 import "net/http"
 
+// OpenAPI specification and Swagger UI handlers for the ingest service.
+
 const openAPISpec = `{
   "openapi": "3.0.3",
   "info": {
@@ -261,12 +263,14 @@ const swaggerHTML = `<!doctype html>
 </body>
 </html>`
 
+// SwaggerUI serves the interactive Swagger UI documentation.
 func SwaggerUI(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(swaggerHTML))
 }
 
+// SwaggerSpec serves the OpenAPI specification in JSON format.
 func SwaggerSpec(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

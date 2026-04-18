@@ -11,10 +11,20 @@ import (
 	"ingest-service/internal/model"
 )
 
+// TimescaleWriter stores telemetry events in TimescaleDB (hypertable api_telemetry).
+//
+// Batches writes using transactions with prepared statements for efficiency.
 type TimescaleWriter struct {
 	db *sql.DB
 }
 
+// NewTimescaleWriter creates a new TimescaleDB writer.
+//
+// Args:
+//   - databaseURL: TimescaleDB connection URL
+//
+// Returns nil TimescaleWriter if database URL is empty (passthrough mode).
+// Returns error if connection fails or database ping fails.
 func NewTimescaleWriter(databaseURL string) (*TimescaleWriter, error) {
 	trimmed := strings.TrimSpace(databaseURL)
 	if trimmed == "" {
@@ -36,6 +46,10 @@ func NewTimescaleWriter(databaseURL string) (*TimescaleWriter, error) {
 	return &TimescaleWriter{db: db}, nil
 }
 
+// WriteBatch inserts a batch of telemetry events into TimescaleDB.
+//
+// Uses a transaction with prepared statement for all events in the batch.
+// Returns early (no-op) if writer or database is nil, or event slice is empty.
 func (w *TimescaleWriter) WriteBatch(ctx context.Context, events []model.TelemetryEvent) error {
 	if w == nil || w.db == nil || len(events) == 0 {
 		return nil

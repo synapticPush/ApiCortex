@@ -9,6 +9,7 @@ import (
 	"ingest-service/internal/model"
 )
 
+// endpointKey uniquely identifies an API endpoint for tracking purposes.
 type endpointKey struct {
 	orgID    string
 	apiID    string
@@ -16,6 +17,9 @@ type endpointKey struct {
 	method   string
 }
 
+// endpointState maintains real-time statistics for a monitored API endpoint.
+//
+// Tracks request counts, error rates, latencies, and most recent status.
 type endpointState struct {
 	OrgID        string    `json:"org_id"`
 	APIID        string    `json:"api_id"`
@@ -35,12 +39,22 @@ type endpointState struct {
 	lastUpdated time.Time
 }
 
+// LiveTracker maintains real-time statistics for monitored API endpoints.
+//
+// Records observations from telemetry events and exposes current state
+// via List() with filtering and pagination support.
 type LiveTracker struct {
 	mu        sync.RWMutex
 	retention time.Duration
 	states    map[endpointKey]*endpointState
 }
 
+// NewLiveTracker creates a new live tracker with data retention.
+//
+// Args:
+//   - retention: how long to keep endpoint state data before expiration; defaults to 60 minutes when <= 0
+//
+// Returns configured tracker ready to receive observations.
 func NewLiveTracker(retention time.Duration) *LiveTracker {
 	if retention <= 0 {
 		retention = 60 * time.Minute
@@ -51,6 +65,9 @@ func NewLiveTracker(retention time.Duration) *LiveTracker {
 	}
 }
 
+// Observe records a telemetry event and updates endpoint statistics.
+//
+// Updates request counts, error metrics, latency averages, and last seen timestamp.
 func (t *LiveTracker) Observe(evt model.TelemetryEvent) {
 	now := time.Now().UTC()
 	seenAt := now

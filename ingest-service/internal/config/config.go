@@ -12,6 +12,10 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// Config contains all application configuration loaded from environment variables.
+//
+// It includes database URLs, Kafka broker settings, API key configuration,
+// rate limiting parameters, buffer settings, and polling configuration.
 type Config struct {
 	Port                string
 	KafkaServiceURI     string
@@ -40,6 +44,9 @@ type Config struct {
 	PollTargets         []PollTargetConfig
 }
 
+// PollTargetConfig represents configuration for a single polling target.
+//
+// Defines the endpoint to poll, request method, headers, and timing parameters.
 type PollTargetConfig struct {
 	Name            string            `json:"name"`
 	OrgID           string            `json:"org_id"`
@@ -55,6 +62,10 @@ type PollTargetConfig struct {
 	SchemaVersion   string            `json:"schema_version"`
 }
 
+// Load reads configuration from environment variables and .env file.
+//
+// Priority: .env file < environment variables.
+// Returns error if required configuration is missing or invalid.
 func Load() (Config, error) {
 	loadDotEnv()
 

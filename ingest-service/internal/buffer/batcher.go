@@ -13,6 +13,10 @@ import (
 	"ingest-service/internal/storage"
 )
 
+// Batcher collects telemetry events and publishes them in batches to Kafka and TimescaleDB.
+//
+// Events are buffered in a channel and flushed when either batch size is reached
+// or flush interval expires. Uses multiple worker goroutines for concurrent publishing.
 type Batcher struct {
 	eventCh       chan model.TelemetryEvent
 	flushCh       chan []model.TelemetryEvent
@@ -27,6 +31,19 @@ type Batcher struct {
 	enqueueMu     sync.Mutex
 }
 
+// NewBatcher creates a new event batcher with specified configuration.
+//
+// Args:
+//   - maxCapacity: maximum events to buffer in memory
+//   - batchSize: target size for flushing batches
+//   - flushInterval: maximum time to wait before flushing
+//   - workers: number of concurrent publisher goroutines
+//   - producer: Kafka producer for publishing events
+//   - m: metrics registry for tracking batches and events
+//   - logger: structured logger instance
+//   - telemetrySink: TimescaleDB writer for telemetry storage
+//
+// Returns configured Batcher instance ready to Start().
 func NewBatcher(maxCapacity, batchSize int, flushInterval time.Duration, workers int, producer *kafka.Producer, m *metrics.Registry, logger zerolog.Logger, telemetrySink *storage.TimescaleWriter) *Batcher {
 	if workers < 1 {
 		workers = 1
@@ -47,6 +64,9 @@ func NewBatcher(maxCapacity, batchSize int, flushInterval time.Duration, workers
 	}
 }
 
+// Start begins the collector and worker goroutines.
+//
+// Must be called before TryEnqueue() to process events.
 func (b *Batcher) Start(_ context.Context) {
 	b.wg.Add(1)
 	go b.runCollector()
@@ -57,19 +77,26 @@ func (b *Batcher) Start(_ context.Context) {
 	}
 }
 
+// Stop gracefully shuts down the batcher, waiting for all pending events to be processed.
 func (b *Batcher) Stop() {
 	close(b.eventCh)
 	b.wg.Wait()
 }
 
+// QueueLen returns the current number of events in the buffer.
 func (b *Batcher) QueueLen() int {
 	return len(b.eventCh)
 }
 
+// QueueCap returns the maximum capacity of the event buffer.
 func (b *Batcher) QueueCap() int {
 	return cap(b.eventCh)
 }
 
+// TryEnqueue attempts to enqueue events without blocking.
+//
+// Returns false if buffer does not have enough space for all events.
+// Returns true if all events were enqueued or slice was empty.
 func (b *Batcher) TryEnqueue(events []model.TelemetryEvent) bool {
 	if len(events) == 0 {
 		return true
