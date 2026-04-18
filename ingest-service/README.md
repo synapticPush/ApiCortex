@@ -55,7 +55,7 @@ HTTP Client
 **Key Characteristics:**
 - Horizontal scalability: stateless HTTP service with async Kafka publishing
 - High throughput: batched writes, worker pool pattern, gzip compression
-- Fault tolerance: at-least-once semantics (Kafka RequireAll acks), transaction rollback on errors
+- Fault tolerance: at-least-once semantics (Kafka RequireAll acks); database writes use local transaction rollback on errors
 - Observability: structured logging (zerolog), Prometheus metrics, request IDs
 - Security: mTLS to Kafka/database, API key validation, org-scoped data isolation, rate limiting
 - Optional active polling: concurrent target monitoring with configurable intervals and backoff
