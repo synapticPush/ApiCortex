@@ -26,7 +26,12 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
-import { API, ContractValidation, Endpoint } from "@/lib/api-types";
+import {
+  API,
+  Endpoint,
+  ExecuteRequest,
+  ExecuteResponse,
+} from "@/lib/api-types";
 import { useQuery } from "@tanstack/react-query";
 
 type TestResponseState = {
@@ -35,10 +40,25 @@ type TestResponseState = {
   size: string;
   body: string;
   headers: Record<string, string>;
-  contractValidation: ContractValidation;
+  success: boolean;
+  protocol: "http" | "graphql" | "websocket";
+  error: string | null;
+  testId: string | null;
+  diagnostics: {
+    dns_resolution_time_ms?: number;
+    tcp_handshake_time_ms?: number;
+    tls_negotiation_time_ms?: number;
+    time_to_first_byte_ms?: number;
+    total_time_ms: number;
+  } | null;
+  messageCount: number | null;
+  timedOut: boolean | null;
 };
 
 export default function TestingPage() {
+  const [protocol, setProtocol] = useState<"http" | "graphql" | "websocket">(
+    "http",
+  );
   const [method, setMethod] = useState("GET");
   const [url, setUrl] = useState("https://api.acme.com/users/");
   const [isSending, setIsSending] = useState(false);
@@ -97,6 +117,7 @@ export default function TestingPage() {
 
   const selectEndpoint = (domain: API, ep: Endpoint) => {
     setActiveEndpoint(ep);
+    setProtocol("http");
     setMethod(ep.method);
     const cleanBase = domain.base_url.replace(new RegExp("/$"), "");
     const cleanPath = ep.path.replace(new RegExp("^/"), "");
@@ -124,8 +145,13 @@ export default function TestingPage() {
     setIsSending(true);
     setResponse(null);
     try {
-      let parsedBody = null;
-      if (method !== "GET" && method !== "DELETE" && requestBody) {
+      let parsedBody: unknown = null;
+      if (
+        protocol !== "websocket" &&
+        method !== "GET" &&
+        method !== "DELETE" &&
+        requestBody
+      ) {
         try {
           parsedBody = JSON.parse(requestBody);
         } catch {
@@ -133,28 +159,67 @@ export default function TestingPage() {
         }
       }
 
-      const res = await apiClient.post("/testing/request", {
-        method,
+      const payload: ExecuteRequest = {
+        test_id: `web-${Date.now()}`,
+        protocol,
         url,
+        method: protocol === "websocket" ? undefined : method,
         headers: {
           "Content-Type": "application/json",
         },
         body: parsedBody,
-      });
+        follow_redirects: true,
+        timeout_ms: 30000,
+      };
 
-      const proxyData = res.data;
-      const respDataStr =
-        typeof proxyData.body === "object"
-          ? JSON.stringify(proxyData.body, null, 2)
-          : String(proxyData.body || "");
+      const res = await apiClient.post<ExecuteResponse>(
+        "/testing/execute",
+        payload,
+      );
+      const executeData = res.data;
+
+      let nextStatus = executeData.success ? 200 : 500;
+      let nextTime = "n/a";
+      let nextSize = "n/a";
+      let nextBody = "";
+      let nextHeaders: Record<string, string> = {};
+      let nextDiagnostics: TestResponseState["diagnostics"] = null;
+      let nextMessageCount: number | null = null;
+      let nextTimedOut: boolean | null = null;
+
+      if (executeData.result && "status_code" in executeData.result) {
+        nextStatus = executeData.result.status_code;
+        nextTime = `${executeData.result.diagnostics.total_time_ms.toFixed(2)}ms`;
+        nextSize = `${(executeData.result.body_size_bytes / 1024).toFixed(2)}KB`;
+        nextBody =
+          typeof executeData.result.body === "object"
+            ? JSON.stringify(executeData.result.body, null, 2)
+            : String(executeData.result.body || "");
+        nextHeaders = executeData.result.headers || {};
+        nextDiagnostics = executeData.result.diagnostics;
+      } else if (executeData.result && "messages" in executeData.result) {
+        nextTime = `${executeData.result.total_time_ms.toFixed(2)}ms`;
+        nextSize = `${executeData.result.message_count} messages`;
+        nextBody = JSON.stringify(executeData.result.messages || [], null, 2);
+        nextMessageCount = executeData.result.message_count;
+        nextTimedOut = executeData.result.timed_out;
+      } else {
+        nextBody = executeData.error || "";
+      }
 
       setResponse({
-        status: proxyData.status,
-        time: `${proxyData.time_ms}ms`,
-        size: `${(proxyData.size_bytes / 1024).toFixed(2)}KB`,
-        body: respDataStr,
-        headers: proxyData.headers || {},
-        contractValidation: proxyData.contract_validation,
+        status: nextStatus,
+        time: nextTime,
+        size: nextSize,
+        body: nextBody,
+        headers: nextHeaders,
+        success: executeData.success,
+        protocol,
+        error: executeData.error || null,
+        testId: executeData.test_id || null,
+        diagnostics: nextDiagnostics,
+        messageCount: nextMessageCount,
+        timedOut: nextTimedOut,
       });
     } catch (error: unknown) {
       const axiosError = error as {
@@ -168,26 +233,19 @@ export default function TestingPage() {
         typeof rawData === "object"
           ? JSON.stringify(rawData, null, 2)
           : String(rawData);
-      let fallbackPath = "/";
-      try {
-        fallbackPath = new URL(url).pathname;
-      } catch {
-        fallbackPath = url.startsWith("/") ? url : "/";
-      }
       setResponse({
         status: status,
         time: `error`,
-        size: `0KB`,
+        size: `n/a`,
         body: respDataStr,
         headers: {},
-        contractValidation: {
-          status: "warning",
-          endpoint_id: null,
-          path: fallbackPath,
-          method,
-          contract_hash: null,
-          observed_hash: null,
-        },
+        success: false,
+        protocol,
+        error: respDataStr,
+        testId: null,
+        diagnostics: null,
+        messageCount: null,
+        timedOut: null,
       });
     } finally {
       setIsSending(false);
@@ -259,8 +317,31 @@ export default function TestingPage() {
         <div className="flex-1 flex flex-col bg-[#161A23] min-w-0">
           <div className="p-4 border-b border-[#242938] flex gap-2 items-center bg-[#0F1117]/50 overflow-x-auto hidden-scrollbar">
             <Select
+              value={protocol}
+              onValueChange={(val) => {
+                if (!val) {
+                  return;
+                }
+                const nextProtocol = val as "http" | "graphql" | "websocket";
+                setProtocol(nextProtocol);
+                if (nextProtocol === "graphql") {
+                  setMethod("POST");
+                }
+              }}
+            >
+              <SelectTrigger className="w-32 shrink-0 bg-[#161A23] border-[#242938] text-[#E6EAF2] focus:ring-[#5B5DFF] font-mono font-bold uppercase">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-[#161A23] border-[#242938] text-[#E6EAF2]">
+                <SelectItem value="http">HTTP</SelectItem>
+                <SelectItem value="graphql">GraphQL</SelectItem>
+                <SelectItem value="websocket">WebSocket</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
               value={method}
               onValueChange={(val) => setMethod(val || "GET")}
+              disabled={protocol === "websocket"}
             >
               <SelectTrigger className="w-24 shrink-0 bg-[#161A23] border-[#242938] text-[#E6EAF2] focus:ring-[#5B5DFF] font-mono font-bold">
                 <SelectValue />
@@ -491,32 +572,25 @@ export default function TestingPage() {
               </div>
               <div className="bg-[#161A23] border-b border-[#242938] px-4 py-2 flex items-center justify-between">
                 <div className="flex items-center gap-2 truncate">
-                  {response.contractValidation.status === "valid" ? (
+                  {response.success ? (
                     <>
                       <CheckCircle2 className="w-4 h-4 shrink-0 text-[#2ED573]" />
                       <span className="text-sm font-medium text-[#E6EAF2] truncate">
-                        Contract Validation Passed
-                      </span>
-                    </>
-                  ) : response.contractValidation.status === "missing" ? (
-                    <>
-                      <AlertTriangle className="w-4 h-4 shrink-0 text-[#9AA3B2]" />
-                      <span className="text-sm font-medium text-[#9AA3B2] truncate">
-                        No Contract Found for Endpoint
+                        Execution Succeeded
                       </span>
                     </>
                   ) : (
                     <>
                       <AlertTriangle className="w-4 h-4 shrink-0 text-[#F5B74F]" />
                       <span className="text-sm font-medium text-[#F5B74F] truncate">
-                        Contract Mismatch Warning
+                        {response.error || "Execution Failed"}
                       </span>
                     </>
                   )}
                 </div>
                 <div className="text-[11px] text-[#9AA3B2] truncate max-w-[45%] text-right">
-                  {response.contractValidation.path}{" "}
-                  {response.contractValidation.method}
+                  {response.protocol.toUpperCase()}
+                  {response.testId ? ` | ${response.testId}` : ""}
                 </div>
               </div>
               <Tabs
@@ -575,14 +649,60 @@ export default function TestingPage() {
                       </div>
                     ))
                   )}
-                  <div className="mt-3 border-t border-[#242938] pt-3 text-[#E6EAF2]">
-                    Contract Hash:{" "}
-                    {response.contractValidation.contract_hash || "n/a"}
-                  </div>
-                  <div>
-                    Observed Hash:{" "}
-                    {response.contractValidation.observed_hash || "n/a"}
-                  </div>
+                  {response.diagnostics ? (
+                    <div className="mt-3 border-t border-[#242938] pt-3 text-[#E6EAF2] space-y-1">
+                      <div>
+                        Total Time:{" "}
+                        {response.diagnostics.total_time_ms.toFixed(2)}ms
+                      </div>
+                      {typeof response.diagnostics.dns_resolution_time_ms ===
+                      "number" ? (
+                        <div>
+                          DNS:{" "}
+                          {response.diagnostics.dns_resolution_time_ms.toFixed(
+                            2,
+                          )}
+                          ms
+                        </div>
+                      ) : null}
+                      {typeof response.diagnostics.tcp_handshake_time_ms ===
+                      "number" ? (
+                        <div>
+                          TCP:{" "}
+                          {response.diagnostics.tcp_handshake_time_ms.toFixed(
+                            2,
+                          )}
+                          ms
+                        </div>
+                      ) : null}
+                      {typeof response.diagnostics.tls_negotiation_time_ms ===
+                      "number" ? (
+                        <div>
+                          TLS:{" "}
+                          {response.diagnostics.tls_negotiation_time_ms.toFixed(
+                            2,
+                          )}
+                          ms
+                        </div>
+                      ) : null}
+                      {typeof response.diagnostics.time_to_first_byte_ms ===
+                      "number" ? (
+                        <div>
+                          TTFB:{" "}
+                          {response.diagnostics.time_to_first_byte_ms.toFixed(
+                            2,
+                          )}
+                          ms
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {response.messageCount !== null ? (
+                    <div className="mt-3 border-t border-[#242938] pt-3 text-[#E6EAF2] space-y-1">
+                      <div>Messages: {response.messageCount}</div>
+                      <div>Timed Out: {response.timedOut ? "yes" : "no"}</div>
+                    </div>
+                  ) : null}
                 </TabsContent>
               </Tabs>
             </>
@@ -595,8 +715,8 @@ export default function TestingPage() {
                 Ready to Send Response
               </h3>
               <p className="w-full text-sm line-clamp-3">
-                Hit Send to execute the request and see the response along with
-                contract validation results here.
+                Hit Send to execute through the Rust API testing toolkit and
+                inspect network results here.
               </p>
             </div>
           )}

@@ -98,3 +98,60 @@ export interface ContractValidation {
   contract_hash: string | null;
   observed_hash: string | null;
 }
+
+export interface ExecuteWsConfig {
+  initial_message?: string;
+  strategy?: "single" | "duration" | "count";
+  listen_duration_ms?: number;
+  message_count?: number;
+  timeout_ms?: number;
+  connection_timeout_ms?: number;
+}
+
+export interface ExecuteRequest {
+  test_id?: string;
+  protocol: "http" | "graphql" | "websocket";
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+  follow_redirects?: boolean;
+  timeout_ms?: number;
+  ws_config?: ExecuteWsConfig;
+}
+
+export interface ExecuteNetworkDiagnostics {
+  dns_resolution_time_ms?: number;
+  tcp_handshake_time_ms?: number;
+  tls_negotiation_time_ms?: number;
+  time_to_first_byte_ms?: number;
+  total_time_ms: number;
+}
+
+export interface ExecuteWsMessage {
+  index: number;
+  data: string;
+  received_at_ms: number;
+}
+
+export interface ExecuteHttpResult {
+  status_code: number;
+  headers: Record<string, string>;
+  body: unknown;
+  body_size_bytes: number;
+  diagnostics: ExecuteNetworkDiagnostics;
+}
+
+export interface ExecuteWsResult {
+  messages: ExecuteWsMessage[];
+  total_time_ms: number;
+  timed_out: boolean;
+  message_count: number;
+}
+
+export interface ExecuteResponse {
+  test_id?: string;
+  success: boolean;
+  result?: ExecuteHttpResult | ExecuteWsResult;
+  error?: string;
+}
