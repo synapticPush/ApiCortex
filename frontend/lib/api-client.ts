@@ -4,6 +4,9 @@ import { toast } from "sonner";
 const tunnelBaseURL =
   process.env.NEXT_PUBLIC_TUNNEL_API_URL;
 
+/**
+ * Returns true when the hostname resolves to a loopback/local development host.
+ */
 const isLocalHost = (hostname: string) => {
   const normalized = hostname.trim().toLowerCase();
   return (
@@ -13,6 +16,14 @@ const isLocalHost = (hostname: string) => {
   );
 };
 
+/**
+ * Resolves the backend base URL according to deployment mode.
+ *
+ * Behavior:
+ * - Production routes through Next.js proxy endpoints.
+ * - Non-local browser hosts prefer tunnel endpoints when configured.
+ * - Falls back to explicit API URL or localhost for local development.
+ */
 const resolveBaseURL = () => {
   const appEnv = (process.env.NEXT_PUBLIC_APP_ENV || "dev").trim().toLowerCase();
 
@@ -35,6 +46,9 @@ const resolveBaseURL = () => {
 };
 
 const baseURL = resolveBaseURL();
+/**
+ * Shared Axios instance used across the frontend for authenticated API calls.
+ */
 export const apiClient = axios.create({
   baseURL,
   headers: {
@@ -50,6 +64,9 @@ const wait = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
+/**
+ * Clears auth cookies when the session is no longer valid.
+ */
 const clearAuthCookies = () => {
   document.cookie =
     "acx_access=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
@@ -58,6 +75,9 @@ const clearAuthCookies = () => {
   document.cookie = "acx_csrf=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 };
 
+/**
+ * Reads a cookie value by key from document.cookie.
+ */
 const getCookieValue = (name: string): string | null => {
   const cookies = document.cookie.split("; ");
   const found = cookies.find((row) => row.startsWith(`${name}=`));
@@ -67,6 +87,9 @@ const getCookieValue = (name: string): string | null => {
   return found.split("=").slice(1).join("=");
 };
 
+/**
+ * Refreshes the auth session, deduplicating concurrent refresh attempts.
+ */
 const refreshAuth = async () => {
   if (!refreshPromise) {
     refreshPromise = apiClient
@@ -79,6 +102,9 @@ const refreshAuth = async () => {
   await refreshPromise;
 };
 
+/**
+ * Retries session refresh with short exponential backoff to absorb transient failures.
+ */
 const refreshAuthWithRetry = async () => {
   const delays = [0, 200, 600];
   let lastError: unknown;
@@ -98,6 +124,9 @@ const refreshAuthWithRetry = async () => {
   throw lastError;
 };
 
+/**
+ * Injects CSRF token for mutating requests when a token cookie is present.
+ */
 apiClient.interceptors.request.use((config) => {
   if (
     ["post", "put", "patch", "delete"].includes(
@@ -113,6 +142,15 @@ apiClient.interceptors.request.use((config) => {
   }
   return config;
 });
+
+/**
+ * Centralized API error handling.
+ *
+ * Notes:
+ * - One automatic refresh + retry is attempted on 401 responses.
+ * - Invalid sessions are redirected to login after cookies are cleared.
+ * - Common error classes surface user-facing toast notifications.
+ */
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {

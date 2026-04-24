@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+/**
+ * Frontend auth gate middleware.
+ *
+ * Redirect rules:
+ * - Unauthenticated users are redirected to login for protected routes.
+ * - Authenticated users visiting login are redirected to the dashboard.
+ */
 export function proxy(request: NextRequest) {
   const accessToken = request.cookies.get("acx_access")?.value;
   const refreshToken = request.cookies.get("acx_refresh")?.value;
@@ -19,6 +26,9 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
+/**
+ * Applies middleware to application routes while excluding static assets and system paths.
+ */
 export const config = {
   matcher: [
     "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)",

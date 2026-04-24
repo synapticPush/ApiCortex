@@ -3,6 +3,11 @@ import { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { cn } from "@/lib/utils";
+
+/**
+ * Shared dashboard shell with sidebar navigation, topbar identity controls,
+ * and a responsive content container for nested pages.
+ */
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   return (

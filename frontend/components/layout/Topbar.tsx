@@ -27,6 +27,10 @@ import type {
   User as AppUser,
 } from "@/lib/api-types";
 
+/**
+ * Dashboard topbar that resolves session identity, displays tenant context,
+ * and provides profile/settings/logout actions.
+ */
 export function Topbar() {
   const router = useRouter();
 
@@ -95,6 +99,9 @@ export function Topbar() {
     return value || "OR";
   }, [displayOrg]);
 
+  /**
+   * Terminates the active session and clears client auth state before redirecting.
+   */
   const handleLogout = async () => {
     try {
       await apiClient.post("/auth/logout");

@@ -1,6 +1,13 @@
 "use client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useState } from "react";
+
+/**
+ * Provides a stable React Query client for the app runtime.
+ *
+ * Defaults are tuned for dashboard workflows to reduce refetch churn
+ * while keeping near-real-time screens responsive.
+ */
 export function QueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
     () =>
